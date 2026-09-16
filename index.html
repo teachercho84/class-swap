@@ -120,38 +120,6 @@
     white-space: pre-line;
   }
 
-  #validationBanner {
-    display: none;
-    background: var(--warm-soft);
-    border: 1.5px solid var(--warm);
-    padding: 12px 16px;
-    border-radius: 3px;
-    margin-bottom: 20px;
-    font-size: 0.85rem;
-  }
-  #validationBanner .vtitle {
-    font-weight: 700;
-    margin-bottom: 4px;
-  }
-  #validationBanner .vnote {
-    color: var(--ink-soft);
-    font-size: 0.8rem;
-    margin-bottom: 8px;
-  }
-  #validationBanner ul {
-    margin: 0;
-    padding-left: 18px;
-  }
-  #validationBanner li {
-    margin: 3px 0;
-  }
-  #validationBanner summary {
-    cursor: pointer;
-    font-size: 0.8rem;
-    color: var(--ink-soft);
-    margin-top: 6px;
-  }
-
   .legend {
     display: flex;
     gap: 18px;
@@ -317,7 +285,6 @@
   </header>
 
   <div id="errorBanner"></div>
-  <div id="validationBanner"></div>
 
   <div id="appBody" style="display:none;">
     <div class="legend">
@@ -834,134 +801,25 @@
   }
 
   // ---------- cross validation ----------
-  // 교사별 시간표 파싱 결과를 다른 시트들과 대조해서 사람이 옮겨 적다가 생긴 실수(오타,
-  // 태그 누락, 한 칸 밀림 등)를 잡아낸다. 문제를 찾으면 콘솔에도 남기고, 사람이 읽을 수 있는
-  // 문자열 목록으로도 모아서 반환 — 화면 경고 배너에 그대로 쓰인다.
   function crossValidate(classBlocks) {
-    var issues = [];
     var subjTeacherNames = Object.keys(STATE.teacherSubjects);
     var scheduleTeacherNames = STATE.teacherNames;
     var onlyInSchedule = scheduleTeacherNames.filter(function (n) { return subjTeacherNames.indexOf(n) === -1; });
     var onlyInSubjects = subjTeacherNames.filter(function (n) { return scheduleTeacherNames.indexOf(n) === -1; });
-    if (onlyInSchedule.length) {
-      var msg1 = '교사별 시간표에만 있고 교사_담당교과엔 없는 교사명: ' + onlyInSchedule.join(', ');
-      console.warn('[검증] ' + msg1);
-      issues.push(msg1);
-    }
-    if (onlyInSubjects.length) {
-      var msg2 = '교사_담당교과에만 있고 교사별 시간표엔 없는 교사명: ' + onlyInSubjects.join(', ');
-      console.warn('[검증] ' + msg2);
-      issues.push(msg2);
-    }
+    if (onlyInSchedule.length) console.warn('[검증] 교사별 시간표에만 있는 교사명:', onlyInSchedule);
+    if (onlyInSubjects.length) console.warn('[검증] 교사_담당교과에만 있는 교사명:', onlyInSubjects);
 
     classBlocks.forEach(function (block) {
       block.tuples.forEach(function (t) {
-        if (t.subject === '창체') return; // 창체는 반(className)을 따로 기록하지 않는 설계라 classScheduleMap엔 애초에 안 들어감 — 정상, 검증 대상 아님
+        if (t.subject === '창체') return;
         var rec = getRecord(STATE.classScheduleMap, block.key, t.day, t.period);
         if (!rec) {
-          var msg3 = block.key + '반 ' + t.day + '요일 ' + t.period + '교시: 학급별 시간표엔 "' + t.subject + '"가 있는데 교사별 시간표 기준으로는 빈 시간으로 계산됨';
-          console.warn('[검증] ' + msg3);
-          issues.push(msg3);
+          console.warn('[검증] 학급별 시간표에는 있으나 교사별 시간표 파생 데이터에 없음:', block.key, t.day, t.period, t.subject);
         } else if (rec.subject !== t.subject) {
-          var msg4 = block.key + '반 ' + t.day + '요일 ' + t.period + '교시: 학급별 시간표="' + t.subject + '" / 교사별 시간표 파생="' + rec.subject + '"';
-          console.warn('[검증] ' + msg4);
-          issues.push(msg4);
+          console.warn('[검증] 과목 불일치:', block.key, t.day, t.period, '학급별=' + t.subject, '교사별파생=' + rec.subject);
         }
       });
     });
-    return issues;
-  }
-
-  // '전체 교사 시간표'(매트릭스, 이동수업을 색깔로 표시해둔 마스터 데이터)의 헤더 구조를
-  // 읽어서 {teacher, day, period, subject, className} 목록으로 펼친다. 요일별 교시 수가
-  // 다를 수 있어(예: 금요일만 6교시) 헤더 행에서 직접 열 구조를 읽어야 한다.
-  function parseMatrixSheet(rows2D) {
-    var dayRow = rows2D[2] || [];
-    var periodRow = rows2D[3] || [];
-    var cols = [];
-    var currentDay = null;
-    for (var c = 2; c < dayRow.length; c++) {
-      if (dayRow[c] != null && String(dayRow[c]).trim() !== '') currentDay = String(dayRow[c]).trim();
-      var p = periodRow[c];
-      if (p == null || p === '') continue;
-      var period = parseInt(p, 10);
-      if (isNaN(period)) continue;
-      cols.push({ col: c, day: currentDay, period: period });
-    }
-    var entries = [];
-    var r = 4;
-    while (r < rows2D.length) {
-      var row = rows2D[r];
-      if (row && row[1] != null && String(row[1]).trim() !== '') {
-        var teacher = String(row[1]).trim();
-        var infoRow = rows2D[r + 1] || [];
-        cols.forEach(function (cd) {
-          var subjRaw = row[cd.col];
-          var subject = subjRaw == null ? null : String(subjRaw).trim().replace(/\n/g, '');
-          if (subject === '') subject = null;
-          var clsRaw = infoRow[cd.col];
-          var cls = clsRaw == null ? null : String(clsRaw).trim();
-          if (cls === '') cls = null;
-          entries.push({ teacher: teacher, day: cd.day, period: cd.period, subject: subject, className: cls });
-        });
-        r += 2;
-      } else {
-        r += 1;
-      }
-    }
-    return entries;
-  }
-
-  // 매트릭스(마스터 데이터)와 실제 파싱에 쓰는 교사별 시간표를 전 칸 대조 — 사람이 옮겨
-  // 적다가 생긴 실수(오타, 이동수업 태그 누락, 요일/교시 밀림 등)를 자동으로 찾아낸다.
-  function crossValidateAgainstMatrix(records, matrixEntries) {
-    var recordMap = {};
-    records.forEach(function (rec) {
-      if (!recordMap[rec.teacher]) recordMap[rec.teacher] = {};
-      if (!recordMap[rec.teacher][rec.day]) recordMap[rec.teacher][rec.day] = {};
-      recordMap[rec.teacher][rec.day][rec.period] = rec.subject;
-    });
-    var issues = [];
-    matrixEntries.forEach(function (m) {
-      var found = recordMap[m.teacher] && recordMap[m.teacher][m.day] ? recordMap[m.teacher][m.day][m.period] : undefined;
-      var expected = found === undefined ? null : found;
-      if (m.subject !== expected) {
-        var msg = m.teacher + ' ' + m.day + '요일 ' + m.period + '교시: 전체 교사 시간표="' + (m.subject || '(없음)') + '" / 교사별 시간표="' + (expected || '(없음)') + '"';
-        console.warn('[검증] ' + msg);
-        issues.push(msg);
-      }
-    });
-    return issues;
-  }
-
-  function renderIssueList(shown, rest) {
-    var html = '<ul>' + shown.map(function (m) { return '<li>' + m + '</li>'; }).join('') + '</ul>';
-    if (rest.length) {
-      html += '<details><summary>나머지 ' + rest.length + '건 더 보기</summary><ul>' +
-        rest.map(function (m) { return '<li>' + m + '</li>'; }).join('') + '</ul></details>';
-    }
-    return html;
-  }
-
-  // matrixIssues(전체 교사 시간표 vs 교사별 시간표 불일치)는 실제 매칭에 쓰는 데이터 자체가
-  // 틀렸을 수 있다는 뜻이라 우선순위가 높고, classIssues(학급별 시간표 vs 파생 데이터 불일치)는
-  // 학급별 시간표가 매칭에 쓰이지 않는 참고용 대조 시트라 실사용 결과엔 영향 없음 — 그래서 문구를 분리.
-  function renderValidationBanner(matrixIssues, classIssues) {
-    var el = document.getElementById('validationBanner');
-    if (!matrixIssues.length && !classIssues.length) { el.style.display = 'none'; el.innerHTML = ''; return; }
-    var html = '';
-    if (matrixIssues.length) {
-      html += '<div class="vtitle">⚠ 실제 교체·대강 계산에 쓰이는 데이터에 확인이 필요한 부분이 ' + matrixIssues.length + '건 있습니다</div>';
-      html += '<div class="vnote">전체 교사 시간표(마스터 데이터)와 교사별 시간표(실제 계산에 사용)가 서로 다릅니다. 아래 위치의 교사별 시간표 칸을 원본에서 다시 확인해주세요 — 확인 전까지는 이 칸과 관련된 교체·대강 결과가 부정확할 수 있습니다.</div>';
-      html += renderIssueList(matrixIssues.slice(0, 8), matrixIssues.slice(8));
-    }
-    if (classIssues.length) {
-      html += '<div class="vtitle" style="margin-top:' + (matrixIssues.length ? '14px' : '0') + '">참고: 학급별 시간표와 다른 부분이 ' + classIssues.length + '건 있습니다</div>';
-      html += '<div class="vnote">학급별 시간표는 실제 계산에는 쓰이지 않는 참고용 대조 시트라 교체·대강 결과에는 영향 없습니다. 다음 학기 자료 정리 때 참고하세요.</div>';
-      html += renderIssueList(classIssues.slice(0, 8), classIssues.slice(8));
-    }
-    el.innerHTML = html;
-    el.style.display = 'block';
   }
 
   // ---------- init ----------
@@ -993,15 +851,7 @@
         STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
         STATE.weekSlots = allWeekSlots(STATE.dayList);
 
-        var classIssues = crossValidate(classParsed.blocks);
-        var matrixIssues = [];
-        if (wb.Sheets['전체 교사 시간표']) {
-          var matrixEntries = parseMatrixSheet(sheetRows('전체 교사 시간표'));
-          matrixIssues = crossValidateAgainstMatrix(STATE.records, matrixEntries);
-        } else {
-          console.warn('[검증] 전체 교사 시간표 시트를 찾을 수 없어 매트릭스 대조를 건너뜁니다.');
-        }
-        renderValidationBanner(matrixIssues, classIssues);
+        crossValidate(classParsed.blocks);
 
         renderTitle();
         renderTeacherOptions();

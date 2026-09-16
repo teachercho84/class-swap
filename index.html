@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>수업 시간표 교체</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #F3F4EF;
+    --paper: #FBFBF8;
+    --ink: #1F2A24;
+    --ink-soft: #55605A;
+    --line: #C9CDBE;
+    --line-soft: #DEE1D6;
+    --accent: #2F5D50;
+    --accent-soft: #E4ECE8;
+    --warm: #B8622B;
+    --warm-soft: #F3E4D6;
+    --free: #E7E4DA;
+    --free-ink: #8C8A7E;
+    --danger-soft: #F5E4E0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1B211D;
+      --paper: #222922;
+      --ink: #E9EBE4;
+      --ink-soft: #A9AFA3;
+      --line: #3B443C;
+      --line-soft: #2C332C;
+      --accent: #7FBBA5;
+      --accent-soft: #26332C;
+      --warm: #E0985F;
+      --warm-soft: #362A20;
+      --free: #2A2F29;
+      --free-ink: #6C7268;
+      --danger-soft: #3A2A26;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1B211D;
+    --paper: #222922;
+    --ink: #E9EBE4;
+    --ink-soft: #A9AFA3;
+    --line: #3B443C;
+    --line-soft: #2C332C;
+    --accent: #7FBBA5;
+    --accent-soft: #26332C;
+    --warm: #E0985F;
+    --warm-soft: #362A20;
+    --free: #2A2F29;
+    --free-ink: #6C7268;
+    --danger-soft: #3A2A26;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Noto Sans KR', sans-serif;
+    padding: 24px 16px 64px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 16px;
+    margin-bottom: 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header.masthead h1 {
+    font-family: 'Noto Serif KR', serif;
+    font-weight: 700;
+    font-size: 1.5rem;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+  header.masthead .sub {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-top: 4px;
+  }
+
+  .teacher-picker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 0.85rem;
+    color: var(--ink-soft);
+  }
+  select#teacherSelect {
+    font-family: 'Noto Sans KR', sans-serif;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--ink);
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    border-radius: 3px;
+    padding: 8px 12px;
+    min-width: 160px;
+  }
+
+  #errorBanner {
+    display: none;
+    background: var(--danger-soft);
+    border: 1.5px solid var(--warm);
+    padding: 12px 16px;
+    border-radius: 3px;
+    margin-bottom: 20px;
+    font-size: 0.88rem;
+    white-space: pre-line;
+  }
+
+  .legend {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    margin-bottom: 14px;
+  }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 12px; height: 12px; border: 1px solid var(--ink); flex: none; }
+  .swatch.free { background: var(--free); border-color: var(--free-ink); }
+  .swatch.changche { background: repeating-linear-gradient(45deg, var(--free) 0 3px, var(--paper) 3px 6px); }
+  .swatch.move { background: var(--warm-soft); border-color: var(--warm); }
+  .swatch.normal { background: var(--paper); }
+
+  .board-scroll { overflow-x: auto; border: 1.5px solid var(--ink); }
+  table.board {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 560px;
+    background: var(--paper);
+  }
+  table.board th, table.board td {
+    border: 1px solid var(--line);
+    padding: 0;
+    text-align: center;
+  }
+  table.board thead th {
+    font-family: 'Noto Serif KR', serif;
+    font-weight: 500;
+    font-size: 0.95rem;
+    padding: 10px 4px;
+    background: var(--accent-soft);
+    border-bottom: 1.5px solid var(--ink);
+  }
+  table.board td.period-cell {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    background: var(--accent-soft);
+    width: 48px;
+    white-space: nowrap;
+    border-right: 1.5px solid var(--ink);
+  }
+  table.board td.slot { height: 62px; width: 19%; vertical-align: middle; position: relative; }
+
+  .cell-btn {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    min-height: 62px;
+    cursor: pointer;
+    font-size: 0.82rem;
+    gap: 2px;
+    padding: 4px 2px;
+  }
+  .cell-btn .subj { font-weight: 700; }
+  .cell-btn .cls { font-size: 0.72rem; color: var(--ink-soft); }
+  .cell-btn:hover { background: var(--accent-soft); }
+  .cell-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+  .cell-empty { height: 62px; }
+
+  .cell-disabled {
+    height: 62px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    color: var(--free-ink);
+    background: var(--free);
+  }
+  .cell-disabled.changche { background: repeating-linear-gradient(45deg, var(--free) 0 6px, var(--paper) 6px 12px); }
+
+  .cell-move { background: var(--warm-soft); }
+  .cell-move .cell-btn::before {
+    content: "\21C4";
+    font-size: 0.7rem;
+    color: var(--warm);
+    font-weight: 700;
+  }
+  .cell-move:hover .cell-btn { background: transparent; }
+
+  .cell-selected { outline: 2.5px solid var(--accent); outline-offset: -2.5px; }
+
+  section.results {
+    margin-top: 28px;
+    border-top: 2px solid var(--ink);
+    padding-top: 20px;
+  }
+  section.results .placeholder {
+    color: var(--ink-soft);
+    font-size: 0.88rem;
+  }
+  .results-title {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+  }
+  .results-meta {
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    margin-bottom: 16px;
+  }
+  .tier {
+    border-left: 3px solid var(--line);
+    padding-left: 14px;
+    margin-bottom: 18px;
+  }
+  .tier.tier-1 { border-left-color: var(--accent); }
+  .tier.tier-2 { border-left-color: var(--warm); }
+  .tier.tier-3 { border-left-color: var(--free-ink); }
+  .tier h3 {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin: 0 0 8px;
+    color: var(--ink);
+  }
+  .tier .note {
+    font-size: 0.78rem;
+    color: var(--ink-soft);
+    margin-bottom: 8px;
+  }
+  .cand-list { list-style: none; margin: 0; padding: 0; }
+  .cand-list li {
+    font-size: 0.88rem;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .cand-list li:last-child { border-bottom: none; }
+  .cand-list .who { font-weight: 500; }
+  .cand-list .where { color: var(--ink-soft); font-size: 0.82rem; }
+  .empty-state {
+    font-size: 0.88rem;
+    color: var(--ink-soft);
+    background: var(--free);
+    padding: 14px 16px;
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="masthead">
+    <div>
+      <h1 id="pageTitle">수업 시간표 교체</h1>
+      <div class="sub" id="pageSub">데이터를 불러오는 중…</div>
+    </div>
+    <div class="teacher-picker">
+      <label for="teacherSelect">교사</label>
+      <select id="teacherSelect" disabled><option>불러오는 중…</option></select>
+    </div>
+  </header>
+
+  <div id="errorBanner"></div>
+
+  <div id="appBody" style="display:none;">
+    <div class="legend">
+      <span><i class="swatch normal"></i>일반 수업</span>
+      <span><i class="swatch move"></i>이동수업</span>
+      <span><i class="swatch free"></i>공강</span>
+      <span><i class="swatch changche"></i>창체</span>
+    </div>
+
+    <div class="board-scroll">
+      <table class="board" id="boardTable"></table>
+    </div>
+
+    <section class="results" id="resultsSection">
+      <div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>
+    </section>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ---------- constants ----------
+  var BLOCK_ROWS = 18;
+
+  // ---------- parsing ----------
+  function computeMoveGroupId(subject, className, day, period) {
+    if (!subject) return null;
+    var ch = subject.trim().slice(-1);
+    var isMove = /^[A-Z]$/.test(ch) && ch !== 'I' && ch !== 'V';
+    if (!isMove) return null;
+    var grade = className ? className.trim().charAt(0) : null;
+    if (!grade) return null;
+    return day + '_' + period + '_' + grade + '_' + ch;
+  }
+
+  function parseBlockSheet(rows2D) {
+    var nBlocksRaw = rows2D.length / BLOCK_ROWS;
+    var nBlocks = Math.floor(nBlocksRaw);
+    if (nBlocksRaw !== nBlocks) {
+      console.warn('[parseBlockSheet] 행 수(' + rows2D.length + ')가 ' + BLOCK_ROWS + '의 배수가 아님 — 마지막 불완전 블록은 무시합니다.');
+    }
+    var blocks = [];
+    var dayList = null;
+    for (var b = 0; b < nBlocks; b++) {
+      var base = b * BLOCK_ROWS;
+      var keyRow = rows2D[base + 1] || [];
+      var key = keyRow[3] == null ? '' : String(keyRow[3]).trim();
+      if (!key) {
+        console.warn('[parseBlockSheet] ' + (base + 1) + '행 블록에 교사/반 이름(D열)이 없어 건너뜁니다.');
+        continue;
+      }
+      var dayHeaderRow = rows2D[base + 2] || [];
+      var days = dayHeaderRow.slice(1, 6).map(function (d) { return d == null ? '' : String(d).trim(); });
+      if (!dayList) dayList = days;
+      var tuples = [];
+      for (var p = 0; p < 7; p++) {
+        var period = p + 1;
+        var subjRow = rows2D[base + 3 + p * 2] || [];
+        var infoRow = rows2D[base + 4 + p * 2] || [];
+        for (var d = 0; d < 5; d++) {
+          var subjectRaw = subjRow[d + 1];
+          var subject = subjectRaw == null ? '' : String(subjectRaw).trim();
+          if (!subject) continue;
+          var infoRaw = infoRow[d + 1];
+          var info = infoRaw == null ? '' : String(infoRaw).trim();
+          tuples.push({ key: key, day: days[d] || (dayList && dayList[d]), period: period, subject: subject, info: info });
+        }
+      }
+      blocks.push({ key: key, tuples: tuples });
+    }
+    return { blocks: blocks, dayList: dayList };
+  }
+
+  function buildTeacherRecords(blocks) {
+    var records = [];
+    blocks.forEach(function (block) {
+      block.tuples.forEach(function (t) {
+        records.push({
+          teacher: t.key,
+          day: t.day,
+          period: t.period,
+          subject: t.subject,
+          className: t.info || null,
+          isFree: t.subject === '공강',
+          isChangChe: t.subject === '창체',
+          moveGroupId: computeMoveGroupId(t.subject, t.info, t.day, t.period)
+        });
+      });
+    });
+    return records;
+  }
+
+  function parseTeacherSubjects(rows2D) {
+    var headerIdx = -1;
+    for (var r = 0; r < rows2D.length; r++) {
+      var c0 = rows2D[r] && rows2D[r][0];
+      if (c0 != null && String(c0).trim() === '교사명') { headerIdx = r; break; }
+    }
+    if (headerIdx === -1) throw new Error('교사_담당교과 시트에서 헤더(교사명) 행을 찾을 수 없습니다.');
+    var map = {};
+    for (var i = headerIdx + 1; i < rows2D.length; i++) {
+      var row = rows2D[i];
+      if (!row) continue;
+      var name = row[0] == null ? '' : String(row[0]).trim();
+      if (!name) continue;
+      var subject = row[1] == null ? '' : String(row[1]).trim();
+      var note = row[2] == null ? '' : String(row[2]).trim();
+      if (map[name]) console.warn('[parseTeacherSubjects] 중복 교사명: ' + name);
+      map[name] = { subject: subject, note: note };
+    }
+    return map;
+  }
+
+  function parseSettings(rows2D) {
+    var headerIdx = -1;
+    for (var r = 0; r < rows2D.length; r++) {
+      var c0 = rows2D[r] && rows2D[r][0];
+      if (c0 != null && String(c0).trim() === '항목') { headerIdx = r; break; }
+    }
+    var labelMap = { '학교명': 'schoolName', '학년도': 'year', '학기': 'semester' };
+    var result = {};
+    var start = headerIdx === -1 ? 0 : headerIdx + 1;
+    for (var i = start; i < rows2D.length; i++) {
+      var row = rows2D[i];
+      if (!row) continue;
+      var label = row[0] == null ? '' : String(row[0]).trim();
+      var key = labelMap[label];
+      if (key) result[key] = row[1] == null ? '' : String(row[1]).trim();
+    }
+    return result;
+  }
+
+  // ---------- indices ----------
+  function buildTeacherScheduleMap(records) {
+    var map = {};
+    records.forEach(function (rec) {
+      if (!map[rec.teacher]) map[rec.teacher] = {};
+      if (!map[rec.teacher][rec.day]) map[rec.teacher][rec.day] = {};
+      map[rec.teacher][rec.day][rec.period] = rec;
+    });
+    return map;
+  }
+
+  function buildClassScheduleMap(records) {
+    var map = {};
+    records.forEach(function (rec) {
+      if (!rec.className) return;
+      if (!map[rec.className]) map[rec.className] = {};
+      if (!map[rec.className][rec.day]) map[rec.className][rec.day] = {};
+      map[rec.className][rec.day][rec.period] = rec;
+    });
+    return map;
+  }
+
+  function buildMoveGroupIndex(records) {
+    var index = {};
+    records.forEach(function (rec) {
+      if (!rec.moveGroupId) return;
+      if (!index[rec.moveGroupId]) {
+        var grade = rec.className.trim().charAt(0);
+        var tag = rec.subject.trim().slice(-1);
+        index[rec.moveGroupId] = { day: rec.day, period: rec.period, grade: grade, tag: tag, members: [] };
+      }
+      index[rec.moveGroupId].members.push({ teacher: rec.teacher, subject: rec.subject, className: rec.className });
+    });
+    return index;
+  }
+
+  function getRecord(map, key, day, period) {
+    return map[key] && map[key][day] && map[key][day][period];
+  }
+  function isEmpty(map, key, day, period) {
+    var rec = getRecord(map, key, day, period);
+    return !rec || rec.isFree === true;
+  }
+  function isEmptyOrOwnGroup(map, key, day, period, excludeGroupId) {
+    var rec = getRecord(map, key, day, period);
+    if (!rec || rec.isFree) return true;
+    if (excludeGroupId && rec.moveGroupId === excludeGroupId) return true;
+    return false;
+  }
+  function allWeekSlots(dayList) {
+    var slots = [];
+    dayList.forEach(function (day) {
+      for (var period = 1; period <= 7; period++) slots.push({ day: day, period: period });
+    });
+    return slots;
+  }
+
+  // ---------- matching engine ----------
+  function findNormalSwapCandidates(ctx, teacherScheduleMap, classScheduleMap, teacherNames, weekSlots) {
+    var results = [];
+    teacherNames.forEach(function (X) {
+      if (X === ctx.teacher) return;
+      weekSlots.forEach(function (slot) {
+        var day = slot.day, period = slot.period;
+        var xRec = getRecord(teacherScheduleMap, X, day, period);
+        if (!xRec || xRec.isFree || xRec.isChangChe || xRec.moveGroupId) return;
+        if (!isEmpty(teacherScheduleMap, ctx.teacher, day, period)) return;
+        if (!isEmpty(teacherScheduleMap, X, ctx.day, ctx.period)) return;
+        if (!isEmpty(classScheduleMap, ctx.className, day, period)) return;
+        if (!isEmpty(classScheduleMap, xRec.className, ctx.day, ctx.period)) return;
+        results.push({ teacher: X, day: day, period: period, className: xRec.className, subject: xRec.subject });
+      });
+    });
+    return results;
+  }
+
+  function allMembersFreeAt(members, day, period, teacherScheduleMap, classScheduleMap, excludeGroupId) {
+    for (var i = 0; i < members.length; i++) {
+      var m = members[i];
+      if (!isEmptyOrOwnGroup(teacherScheduleMap, m.teacher, day, period, excludeGroupId)) return false;
+      if (!isEmptyOrOwnGroup(classScheduleMap, m.className, day, period, excludeGroupId)) return false;
+    }
+    return true;
+  }
+
+  function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap, weekSlots) {
+    var groupA = moveGroupIndex[ctx.moveGroupId];
+    var origDay = ctx.day, origPeriod = ctx.period;
+    var emptySlotMoves = [];
+    weekSlots.forEach(function (slot) {
+      if (slot.day === origDay && slot.period === origPeriod) return;
+      if (allMembersFreeAt(groupA.members, slot.day, slot.period, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) {
+        emptySlotMoves.push({ type: 'emptySlotMove', day: slot.day, period: slot.period });
+      }
+    });
+    var setSwaps = [];
+    Object.keys(moveGroupIndex).forEach(function (gid) {
+      if (gid === ctx.moveGroupId) return;
+      var groupB = moveGroupIndex[gid];
+      if (groupB.day === origDay && groupB.period === origPeriod) return;
+      if (!allMembersFreeAt(groupA.members, groupB.day, groupB.period, teacherScheduleMap, classScheduleMap, gid)) return;
+      if (!allMembersFreeAt(groupB.members, origDay, origPeriod, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) return;
+      setSwaps.push({ type: 'setSwap', otherGroupId: gid, otherMembers: groupB.members, targetDay: groupB.day, targetPeriod: groupB.period });
+    });
+    return { emptySlotMoves: emptySlotMoves, setSwaps: setSwaps };
+  }
+
+  function findSubjectSubstituteCandidates(ctx, teacherSubjects, teacherScheduleMap, teacherNames) {
+    var isCareer = ctx.subject.trim() === '진로';
+    var mySubject = teacherSubjects[ctx.teacher] ? teacherSubjects[ctx.teacher].subject : null;
+    var results = [];
+    teacherNames.forEach(function (X) {
+      if (X === ctx.teacher) return;
+      if (!isEmpty(teacherScheduleMap, X, ctx.day, ctx.period)) return;
+      if (isCareer) {
+        results.push({ teacher: X });
+      } else {
+        var xSubject = teacherSubjects[X] ? teacherSubjects[X].subject : null;
+        if (xSubject && mySubject && xSubject === mySubject) results.push({ teacher: X });
+      }
+    });
+    return results;
+  }
+
+  function findFallbackSubstituteCandidates(ctx, teacherScheduleMap, teacherNames) {
+    var results = [];
+    teacherNames.forEach(function (X) {
+      if (X === ctx.teacher) return;
+      if (!isEmpty(teacherScheduleMap, X, ctx.day, ctx.period)) return;
+      results.push({ teacher: X });
+    });
+    return results;
+  }
+
+  // ---------- app state ----------
+  var STATE = {
+    records: [], dayList: [], teacherScheduleMap: {}, classScheduleMap: {},
+    moveGroupIndex: {}, teacherSubjects: {}, teacherNames: [], weekSlots: [],
+    currentTeacher: null, settings: {}
+  };
+
+  // ---------- render ----------
+  function showError(msg) {
+    var el = document.getElementById('errorBanner');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function renderTitle() {
+    var s = STATE.settings;
+    var title = (s.year || '') + '학년도 ' + (s.semester || '') + ' ' + (s.schoolName || '') + ' 수업 시간표 교체';
+    document.title = title;
+    document.getElementById('pageTitle').textContent = title;
+    document.getElementById('pageSub').textContent = '칸을 눌러 맞교체·대강 후보를 찾아보세요.';
+  }
+
+  function renderTeacherOptions() {
+    var sel = document.getElementById('teacherSelect');
+    sel.innerHTML = '';
+    STATE.teacherNames.slice().sort(function (a, b) { return a.localeCompare(b, 'ko'); }).forEach(function (name) {
+      var opt = document.createElement('option');
+      opt.value = name;
+      opt.textContent = name;
+      sel.appendChild(opt);
+    });
+    sel.disabled = false;
+    sel.addEventListener('change', function () {
+      STATE.currentTeacher = sel.value;
+      renderGrid();
+      clearResults();
+    });
+    if (STATE.teacherNames.length) {
+      STATE.currentTeacher = sel.options[0].value;
+      sel.value = STATE.currentTeacher;
+    }
+  }
+
+  function cellState(rec) {
+    if (!rec) return 'empty';
+    if (rec.isFree) return 'free';
+    if (rec.isChangChe) return 'changche';
+    if (rec.moveGroupId) return 'move';
+    return 'normal';
+  }
+
+  function renderGrid() {
+    var table = document.getElementById('boardTable');
+    table.innerHTML = '';
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    headRow.appendChild(document.createElement('th'));
+    STATE.dayList.forEach(function (day) {
+      var th = document.createElement('th');
+      th.textContent = day;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    for (var period = 1; period <= 7; period++) {
+      var tr = document.createElement('tr');
+      var pCell = document.createElement('td');
+      pCell.className = 'period-cell';
+      pCell.textContent = period + '교시';
+      tr.appendChild(pCell);
+
+      STATE.dayList.forEach(function (day) {
+        var rec = getRecord(STATE.teacherScheduleMap, STATE.currentTeacher, day, period);
+        var td = document.createElement('td');
+        td.className = 'slot';
+        var state = cellState(rec);
+
+        if (state === 'empty') {
+          td.innerHTML = '';
+          td.className += '';
+          var emptyDiv = document.createElement('div');
+          emptyDiv.className = 'cell-empty';
+          td.appendChild(emptyDiv);
+        } else if (state === 'free') {
+          var freeDiv = document.createElement('div');
+          freeDiv.className = 'cell-disabled';
+          freeDiv.textContent = '공강';
+          td.appendChild(freeDiv);
+        } else if (state === 'changche') {
+          var ccDiv = document.createElement('div');
+          ccDiv.className = 'cell-disabled changche';
+          ccDiv.textContent = '창체';
+          td.appendChild(ccDiv);
+        } else {
+          if (state === 'move') td.className += ' cell-move';
+          var btn = document.createElement('button');
+          btn.className = 'cell-btn';
+          btn.type = 'button';
+          var subjSpan = document.createElement('span');
+          subjSpan.className = 'subj';
+          subjSpan.textContent = rec.subject;
+          var clsSpan = document.createElement('span');
+          clsSpan.className = 'cls';
+          clsSpan.textContent = rec.className || '';
+          btn.appendChild(subjSpan);
+          btn.appendChild(clsSpan);
+          btn.addEventListener('click', (function (record, cellEl) {
+            return function () { handleCellClick(record, cellEl); };
+          })(rec, td));
+          td.appendChild(btn);
+        }
+        tr.appendChild(td);
+      });
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    document.getElementById('appBody').style.display = 'block';
+  }
+
+  function clearResults() {
+    var section = document.getElementById('resultsSection');
+    section.innerHTML = '<div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>';
+  }
+
+  var lastSelectedCell = null;
+
+  function handleCellClick(rec, cellEl) {
+    if (lastSelectedCell) lastSelectedCell.classList.remove('cell-selected');
+    cellEl.classList.add('cell-selected');
+    lastSelectedCell = cellEl;
+
+    var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
+
+    var tier1, tier1NonEmpty;
+    if (ctx.moveGroupId) {
+      tier1 = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, STATE.weekSlots);
+      tier1NonEmpty = (tier1.emptySlotMoves.length + tier1.setSwaps.length) > 0;
+    } else {
+      tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.classScheduleMap, STATE.teacherNames, STATE.weekSlots);
+      tier1NonEmpty = tier1.length > 0;
+    }
+    if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
+
+    var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, STATE.teacherScheduleMap, STATE.teacherNames);
+    if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
+
+    var tier3 = findFallbackSubstituteCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames);
+    renderResults(ctx, 3, tier3);
+  }
+
+  function renderResults(ctx, tier, data) {
+    var section = document.getElementById('resultsSection');
+    var html = '';
+    html += '<div class="results-title">' + ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시</div>';
+    html += '<div class="results-meta">' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '') + '</div>';
+
+    if (tier === 1 && ctx.moveGroupId) {
+      var moves = data.emptySlotMoves, swaps = data.setSwaps;
+      if (moves.length === 0 && swaps.length === 0) {
+        html += emptyStateHtml();
+      } else {
+        html += '<div class="tier tier-1"><h3>1순위: 세트 이동/교체 가능</h3><ul class="cand-list">';
+        moves.forEach(function (m) {
+          html += '<li><span class="who">빈 시간대 이동</span><span class="where">' + m.day + '요일 ' + m.period + '교시 (세트 전원 비어있음)</span></li>';
+        });
+        swaps.forEach(function (s) {
+          var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
+          html += '<li><span class="who">세트간 교체</span><span class="where">"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시</span></li>';
+        });
+        html += '</ul></div>';
+      }
+    } else if (tier === 1) {
+      if (data.length === 0) {
+        html += emptyStateHtml();
+      } else {
+        html += '<div class="tier tier-1"><h3>1순위: 맞교체 가능</h3><ul class="cand-list">';
+        data.forEach(function (c) {
+          html += '<li><span class="who">' + c.teacher + ' 교사</span><span class="where">' + c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')</span></li>';
+        });
+        html += '</ul></div>';
+      }
+    } else if (tier === 2) {
+      html += '<div class="tier tier-2"><h3>2순위: 동교과 대강 후보</h3>';
+      if (ctx.subject.trim() === '진로') html += '<div class="note">담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.</div>';
+      html += '<ul class="cand-list">';
+      data.forEach(function (c) {
+        html += '<li><span class="who">' + c.teacher + ' 교사</span></li>';
+      });
+      html += '</ul></div>';
+    } else if (tier === 3) {
+      html += '<div class="tier tier-3"><h3>3순위: 전체 대강 후보 — 교과 무관, 참고용</h3>';
+      html += '<div class="note">교과가 다를 수 있으니 참고만 하세요.</div>';
+      if (data.length === 0) {
+        html += emptyStateHtml();
+      } else {
+        html += '<ul class="cand-list">';
+        data.forEach(function (c) {
+          html += '<li><span class="who">' + c.teacher + ' 교사</span></li>';
+        });
+        html += '</ul>';
+      }
+      html += '</div>';
+    }
+
+    section.innerHTML = html;
+  }
+
+  function emptyStateHtml() {
+    return '<div class="empty-state">가능한 교체·대강 후보가 없습니다.</div>';
+  }
+
+  // ---------- cross validation ----------
+  function crossValidate(classBlocks) {
+    var subjTeacherNames = Object.keys(STATE.teacherSubjects);
+    var scheduleTeacherNames = STATE.teacherNames;
+    var onlyInSchedule = scheduleTeacherNames.filter(function (n) { return subjTeacherNames.indexOf(n) === -1; });
+    var onlyInSubjects = subjTeacherNames.filter(function (n) { return scheduleTeacherNames.indexOf(n) === -1; });
+    if (onlyInSchedule.length) console.warn('[검증] 교사별 시간표에만 있는 교사명:', onlyInSchedule);
+    if (onlyInSubjects.length) console.warn('[검증] 교사_담당교과에만 있는 교사명:', onlyInSubjects);
+
+    classBlocks.forEach(function (block) {
+      block.tuples.forEach(function (t) {
+        var rec = getRecord(STATE.classScheduleMap, block.key, t.day, t.period);
+        if (!rec) {
+          console.warn('[검증] 학급별 시간표에는 있으나 교사별 시간표 파생 데이터에 없음:', block.key, t.day, t.period, t.subject);
+        } else if (rec.subject !== t.subject) {
+          console.warn('[검증] 과목 불일치:', block.key, t.day, t.period, '학급별=' + t.subject, '교사별파생=' + rec.subject);
+        }
+      });
+    });
+  }
+
+  // ---------- init ----------
+  function init() {
+    fetch('data.xlsx')
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('data.xlsx 파일을 불러올 수 없습니다 (HTTP ' + resp.status + ').');
+        return resp.arrayBuffer();
+      })
+      .then(function (buf) {
+        var wb = XLSX.read(buf, { type: 'array' });
+        function sheetRows(name) {
+          if (wb.Sheets[name] === undefined) throw new Error('필수 시트를 찾을 수 없습니다: ' + name);
+          return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null });
+        }
+
+        STATE.settings = parseSettings(sheetRows('설정'));
+        STATE.teacherSubjects = parseTeacherSubjects(sheetRows('교사_담당교과'));
+
+        var teacherParsed = parseBlockSheet(sheetRows('교사별 시간표'));
+        var classParsed = parseBlockSheet(sheetRows('학급별 시간표'));
+
+        STATE.dayList = teacherParsed.dayList || ['월', '화', '수', '목', '금'];
+        STATE.records = buildTeacherRecords(teacherParsed.blocks);
+        STATE.teacherScheduleMap = buildTeacherScheduleMap(STATE.records);
+        STATE.classScheduleMap = buildClassScheduleMap(STATE.records);
+        STATE.moveGroupIndex = buildMoveGroupIndex(STATE.records);
+        STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
+        STATE.weekSlots = allWeekSlots(STATE.dayList);
+
+        crossValidate(classParsed.blocks);
+
+        renderTitle();
+        renderTeacherOptions();
+        renderGrid();
+      })
+      .catch(function (err) {
+        console.error(err);
+        showError('데이터를 불러오는 중 문제가 발생했습니다.\n' + err.message + '\n\ndata.xlsx 파일이 index.html과 같은 위치에 있는지 확인해주세요.');
+      });
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
+})();
+</script>
+</body>
+</html>

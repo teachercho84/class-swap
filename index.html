@@ -509,12 +509,27 @@
     return true;
   }
 
-  function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap, weekSlots) {
+  // 두 세트가 교사를 한 명이라도 공유하면 안 됨 — 같은 이동수업 그룹이 주중에 여러 번
+  // (요일만 다르게) 반복되는 경우, moveGroupId는 요일별로 다르지만 실제로는 같은 사람들이라
+  // "세트간 교체"의 상대가 될 수 없다 (그 사람 본인과 바꾸는 셈이라 아무 의미가 없음).
+  function shareAnyTeacher(membersA, membersB) {
+    for (var i = 0; i < membersA.length; i++) {
+      for (var j = 0; j < membersB.length; j++) {
+        if (membersA[i].teacher === membersB[j].teacher) return true;
+      }
+    }
+    return false;
+  }
+
+  function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap, weekSlots, validSlotSet) {
     var groupA = moveGroupIndex[ctx.moveGroupId];
     var origDay = ctx.day, origPeriod = ctx.period;
     var emptySlotMoves = [];
     weekSlots.forEach(function (slot) {
       if (slot.day === origDay && slot.period === origPeriod) return;
+      // 학교 전체에 실제 수업이 하나도 없는 시간대(예: 전원 공강/창체이거나 애초에 없는 교시)는
+      // 이동할 수 있는 진짜 수업 시간이 아니므로 후보에서 제외.
+      if (!validSlotSet.has(slot.day + '_' + slot.period)) return;
       if (allMembersFreeAt(groupA.members, slot.day, slot.period, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) {
         emptySlotMoves.push({ type: 'emptySlotMove', day: slot.day, period: slot.period });
       }
@@ -524,11 +539,25 @@
       if (gid === ctx.moveGroupId) return;
       var groupB = moveGroupIndex[gid];
       if (groupB.day === origDay && groupB.period === origPeriod) return;
+      if (shareAnyTeacher(groupA.members, groupB.members)) return;
       if (!allMembersFreeAt(groupA.members, groupB.day, groupB.period, teacherScheduleMap, classScheduleMap, gid)) return;
       if (!allMembersFreeAt(groupB.members, origDay, origPeriod, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) return;
       setSwaps.push({ type: 'setSwap', otherGroupId: gid, otherMembers: groupB.members, targetDay: groupB.day, targetPeriod: groupB.period });
     });
     return { emptySlotMoves: emptySlotMoves, setSwaps: setSwaps };
+  }
+
+  // (요일,교시) 중 학교 전체에서 실제 수업(공강·창체가 아닌 진짜 과목)이 하나라도 있는
+  // 시간대만 모음 — 이동수업을 옮길 수 있는 "진짜 수업 시간대" 판정에 사용.
+  function buildValidSlotSet(records) {
+    var set = {};
+    records.forEach(function (rec) {
+      if (rec.isFree || rec.isChangChe) return;
+      set[rec.day + '_' + rec.period] = true;
+    });
+    return {
+      has: function (key) { return !!set[key]; }
+    };
   }
 
   function findSubjectSubstituteCandidates(ctx, teacherSubjects, teacherScheduleMap, teacherNames) {
@@ -561,7 +590,7 @@
   // ---------- app state ----------
   var STATE = {
     records: [], dayList: [], teacherScheduleMap: {}, classScheduleMap: {},
-    moveGroupIndex: {}, teacherSubjects: {}, teacherNames: [], weekSlots: [],
+    moveGroupIndex: {}, teacherSubjects: {}, teacherNames: [], weekSlots: [], validSlotSet: null,
     currentTeacher: null, settings: {}
   };
 
@@ -695,7 +724,7 @@
 
     var tier1, tier1NonEmpty;
     if (ctx.moveGroupId) {
-      tier1 = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, STATE.weekSlots);
+      tier1 = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, STATE.weekSlots, STATE.validSlotSet);
       tier1NonEmpty = (tier1.emptySlotMoves.length + tier1.setSwaps.length) > 0;
     } else {
       tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
@@ -817,6 +846,7 @@
         STATE.teacherScheduleMap = buildTeacherScheduleMap(STATE.records);
         STATE.classScheduleMap = buildClassScheduleMap(STATE.records);
         STATE.moveGroupIndex = buildMoveGroupIndex(STATE.records);
+        STATE.validSlotSet = buildValidSlotSet(STATE.records);
         STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
         STATE.weekSlots = allWeekSlots(STATE.dayList);
 

@@ -211,15 +211,6 @@
 
   .cell-selected { outline: 2.5px solid var(--accent); outline-offset: -2.5px; }
 
-  section.results {
-    margin-top: 28px;
-    border-top: 2px solid var(--ink);
-    padding-top: 20px;
-  }
-  section.results .placeholder {
-    color: var(--ink-soft);
-    font-size: 0.88rem;
-  }
   .results-title {
     font-family: 'Noto Serif KR', serif;
     font-size: 1.05rem;
@@ -269,6 +260,114 @@
     padding: 14px 16px;
     border-radius: 3px;
   }
+
+  .cand-btn {
+    all: unset;
+    box-sizing: border-box;
+    width: 100%;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    padding: 4px 6px;
+    border-radius: 3px;
+  }
+  .cand-btn:hover, .cand-btn:focus-visible { background: var(--accent-soft); }
+  .cand-btn.is-selected { background: var(--accent-soft); outline: 1.5px solid var(--accent); }
+
+  /* ---- modal ---- */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    z-index: 100;
+  }
+  .modal-box {
+    position: relative;
+    background: var(--paper);
+    border: 1.5px solid var(--ink);
+    border-radius: 4px;
+    max-width: 560px;
+    width: 100%;
+    max-height: 85vh;
+    overflow-y: auto;
+    padding: 24px 22px;
+  }
+  .modal-close {
+    all: unset;
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    color: var(--ink-soft);
+    padding: 4px 8px;
+  }
+  .modal-close:hover { color: var(--ink); }
+
+  /* ---- preview (changed schedules) ---- */
+  .preview-section {
+    margin-top: 28px;
+    border-top: 2px solid var(--ink);
+    padding-top: 20px;
+  }
+  .preview-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .preview-head h2 {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 1.05rem;
+    font-weight: 700;
+    margin: 0;
+  }
+  .preview-close {
+    all: unset;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: var(--ink-soft);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 5px 10px;
+  }
+  .preview-close:hover { color: var(--ink); border-color: var(--ink-soft); }
+  .preview-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  @media (max-width: 640px) {
+    .preview-cols { grid-template-columns: 1fr; }
+  }
+  .preview-col-title {
+    font-size: 0.85rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  table.mini-board { min-width: 0; font-size: 0.7em; }
+  table.mini-board td.slot { height: 40px; }
+  table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 40px; height: 40px; font-size: 0.82em; }
+  table.mini-board td.period-cell { width: 30px; }
+  table.mini-board .cell-btn { pointer-events: none; cursor: default; }
+  table.mini-board .cell-btn:hover { background: transparent; }
+
+  .slot-added .cell-btn, .slot-added .cell-disabled { background: var(--accent-soft); outline: 1.5px solid var(--accent); outline-offset: -1.5px; }
+  .slot-covered .cell-btn, .slot-covered .cell-disabled {
+    background: var(--warm-soft);
+    outline: 1.5px dashed var(--warm);
+    outline-offset: -1.5px;
+  }
+  .slot-covered .covered-by { display: block; font-size: 0.75em; color: var(--warm); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -298,9 +397,29 @@
       <table class="board" id="boardTable"></table>
     </div>
 
-    <section class="results" id="resultsSection">
-      <div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>
+    <section id="previewSection" class="preview-section" style="display:none;">
+      <div class="preview-head">
+        <h2>변경 후 시간표 미리보기</h2>
+        <button type="button" class="preview-close" id="previewCloseBtn">미리보기 닫기</button>
+      </div>
+      <div class="preview-cols">
+        <div class="preview-col">
+          <div class="preview-col-title" id="previewLeftTitle"></div>
+          <div class="board-scroll"><table class="board mini-board" id="previewLeftBoard"></table></div>
+        </div>
+        <div class="preview-col">
+          <div class="preview-col-title" id="previewRightTitle"></div>
+          <div class="board-scroll"><table class="board mini-board" id="previewRightBoard"></table></div>
+        </div>
+      </div>
     </section>
+  </div>
+</div>
+
+<div id="modalOverlay" class="modal-overlay" style="display:none;">
+  <div class="modal-box" role="dialog" aria-modal="true">
+    <button type="button" class="modal-close" id="modalCloseBtn" aria-label="닫기">&times;</button>
+    <div id="modalBody"></div>
   </div>
 </div>
 
@@ -638,13 +757,17 @@
     return 'normal';
   }
 
-  function renderGrid() {
-    var table = document.getElementById('boardTable');
+  // 실제 시간표 그리드와 미리보기용 절반크기 시간표가 공유하는 렌더 로직.
+  // getRec(day,period)가 레코드를 돌려주고, opts.onCellClick이 있으면 그 셀에 클릭 핸들러를
+  // 붙인다(미리보기는 안 붙여서 읽기 전용이 됨). opts.diffMap이 있으면 "요일_교시" 키로
+  // 추가 CSS 클래스(slot-added/slot-covered)와 라벨을 얹는다(미리보기 diff 표시용).
+  function renderBoardInto(table, dayList, getRec, opts) {
+    opts = opts || {};
     table.innerHTML = '';
     var thead = document.createElement('thead');
     var headRow = document.createElement('tr');
     headRow.appendChild(document.createElement('th'));
-    STATE.dayList.forEach(function (day) {
+    dayList.forEach(function (day) {
       var th = document.createElement('th');
       th.textContent = day;
       headRow.appendChild(th);
@@ -660,15 +783,15 @@
       pCell.textContent = period + '교시';
       tr.appendChild(pCell);
 
-      STATE.dayList.forEach(function (day) {
-        var rec = getRecord(STATE.teacherScheduleMap, STATE.currentTeacher, day, period);
+      dayList.forEach(function (day) {
+        var rec = getRec(day, period);
         var td = document.createElement('td');
         td.className = 'slot';
         var state = cellState(rec);
+        var diffInfo = opts.diffMap ? opts.diffMap[day + '_' + period] : null;
+        if (diffInfo) td.className += ' slot-' + diffInfo.type;
 
         if (state === 'empty') {
-          td.innerHTML = '';
-          td.className += '';
           var emptyDiv = document.createElement('div');
           emptyDiv.className = 'cell-empty';
           td.appendChild(emptyDiv);
@@ -695,9 +818,17 @@
           clsSpan.textContent = rec.className || '';
           btn.appendChild(subjSpan);
           btn.appendChild(clsSpan);
-          btn.addEventListener('click', (function (record, cellEl) {
-            return function () { handleCellClick(record, cellEl); };
-          })(rec, td));
+          if (diffInfo && diffInfo.label) {
+            var labelSpan = document.createElement('span');
+            labelSpan.className = 'covered-by';
+            labelSpan.textContent = diffInfo.label;
+            btn.appendChild(labelSpan);
+          }
+          if (opts.onCellClick) {
+            btn.addEventListener('click', (function (record, cellEl) {
+              return function () { opts.onCellClick(record, cellEl); };
+            })(rec, td));
+          }
           td.appendChild(btn);
         }
         tr.appendChild(td);
@@ -705,12 +836,19 @@
       tbody.appendChild(tr);
     }
     table.appendChild(tbody);
+  }
+
+  function renderGrid() {
+    var table = document.getElementById('boardTable');
+    renderBoardInto(table, STATE.dayList, function (day, period) {
+      return getRecord(STATE.teacherScheduleMap, STATE.currentTeacher, day, period);
+    }, { onCellClick: handleCellClick });
     document.getElementById('appBody').style.display = 'block';
   }
 
   function clearResults() {
-    var section = document.getElementById('resultsSection');
-    section.innerHTML = '<div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>';
+    closeModal();
+    hidePreview();
   }
 
   var lastSelectedCell = null;
@@ -719,6 +857,7 @@
     if (lastSelectedCell) lastSelectedCell.classList.remove('cell-selected');
     cellEl.classList.add('cell-selected');
     lastSelectedCell = cellEl;
+    hidePreview(); // 새 셀을 클릭하면 이전 미리보기는 더 이상 유효하지 않으므로 접어둠
 
     var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
 
@@ -739,65 +878,210 @@
     renderResults(ctx, 3, tier3);
   }
 
-  function renderResults(ctx, tier, data) {
-    var section = document.getElementById('resultsSection');
-    var html = '';
-    html += '<div class="results-title">' + ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시</div>';
-    html += '<div class="results-meta">' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '') + '</div>';
-
-    if (tier === 1 && ctx.moveGroupId) {
-      var moves = data.emptySlotMoves, swaps = data.setSwaps;
-      if (moves.length === 0 && swaps.length === 0) {
-        html += emptyStateHtml();
-      } else {
-        html += '<div class="tier tier-1"><h3>1순위: 세트 이동/교체 가능</h3><ul class="cand-list">';
-        moves.forEach(function (m) {
-          html += '<li><span class="who">빈 시간대 이동</span><span class="where">' + m.day + '요일 ' + m.period + '교시 (세트 전원 비어있음)</span></li>';
-        });
-        swaps.forEach(function (s) {
-          var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
-          html += '<li><span class="who">세트간 교체</span><span class="where">"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시</span></li>';
-        });
-        html += '</ul></div>';
+  // 후보 한 줄(<li>)을 만든다. onSelect가 있으면 클릭 가능한 버튼으로, 없으면(이동수업처럼
+  // 선택해서 미리보기를 만들 수 없는 경우) 그냥 텍스트로 렌더링.
+  function makeCandListItem(whoText, whereText, onSelect) {
+    var li = document.createElement('li');
+    if (onSelect) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'cand-btn';
+      var who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = whoText;
+      btn.appendChild(who);
+      if (whereText) {
+        var where = document.createElement('span');
+        where.className = 'where';
+        where.textContent = whereText;
+        btn.appendChild(where);
       }
-    } else if (tier === 1) {
-      if (data.length === 0) {
-        html += emptyStateHtml();
-      } else {
-        html += '<div class="tier tier-1"><h3>1순위: 맞교체 가능</h3><ul class="cand-list">';
-        data.forEach(function (c) {
-          html += '<li><span class="who">' + c.teacher + ' 교사</span><span class="where">' + c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')</span></li>';
-        });
-        html += '</ul></div>';
-      }
-    } else if (tier === 2) {
-      html += '<div class="tier tier-2"><h3>2순위: 동교과 대강 후보</h3>';
-      if (ctx.subject.trim() === '진로') html += '<div class="note">담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.</div>';
-      html += '<ul class="cand-list">';
-      data.forEach(function (c) {
-        html += '<li><span class="who">' + c.teacher + ' 교사</span></li>';
+      btn.addEventListener('click', function () {
+        var list = btn.closest('.cand-list');
+        if (list) {
+          var prev = list.querySelector('.is-selected');
+          if (prev) prev.classList.remove('is-selected');
+        }
+        btn.classList.add('is-selected');
+        onSelect();
       });
-      html += '</ul></div>';
-    } else if (tier === 3) {
-      html += '<div class="tier tier-3"><h3>3순위: 전체 대강 후보 — 교과 무관, 참고용</h3>';
-      html += '<div class="note">교과가 다를 수 있으니 참고만 하세요.</div>';
-      if (data.length === 0) {
-        html += emptyStateHtml();
-      } else {
-        html += '<ul class="cand-list">';
-        data.forEach(function (c) {
-          html += '<li><span class="who">' + c.teacher + ' 교사</span></li>';
-        });
-        html += '</ul>';
+      li.appendChild(btn);
+    } else {
+      var whoSpan = document.createElement('span');
+      whoSpan.className = 'who';
+      whoSpan.textContent = whoText;
+      li.appendChild(whoSpan);
+      if (whereText) {
+        var whereSpan = document.createElement('span');
+        whereSpan.className = 'where';
+        whereSpan.textContent = whereText;
+        li.appendChild(whereSpan);
       }
-      html += '</div>';
     }
-
-    section.innerHTML = html;
+    return li;
   }
 
-  function emptyStateHtml() {
-    return '<div class="empty-state">가능한 교체·대강 후보가 없습니다.</div>';
+  function appendTierBlock(container, tierClass, headingText, noteText, items) {
+    var tierDiv = document.createElement('div');
+    tierDiv.className = 'tier ' + tierClass;
+    var h3 = document.createElement('h3');
+    h3.textContent = headingText;
+    tierDiv.appendChild(h3);
+    if (noteText) {
+      var note = document.createElement('div');
+      note.className = 'note';
+      note.textContent = noteText;
+      tierDiv.appendChild(note);
+    }
+    if (items.length === 0) {
+      var empty = document.createElement('div');
+      empty.className = 'empty-state';
+      empty.textContent = '가능한 교체·대강 후보가 없습니다.';
+      tierDiv.appendChild(empty);
+    } else {
+      var ul = document.createElement('ul');
+      ul.className = 'cand-list';
+      items.forEach(function (li) { ul.appendChild(li); });
+      tierDiv.appendChild(ul);
+    }
+    container.appendChild(tierDiv);
+  }
+
+  // 팝업(모달) 안에 후보 목록을 그린다. 1순위(일반)·2·3순위 후보는 클릭하면 선택되어
+  // 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다. 이동수업 세트(1순위, moveGroupId
+  // 있는 경우)는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.
+  function renderResults(ctx, tier, data) {
+    var body = document.getElementById('modalBody');
+    body.innerHTML = '';
+
+    var titleDiv = document.createElement('div');
+    titleDiv.className = 'results-title';
+    titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시';
+    body.appendChild(titleDiv);
+
+    var metaDiv = document.createElement('div');
+    metaDiv.className = 'results-meta';
+    metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
+    body.appendChild(metaDiv);
+
+    if (tier === 1 && ctx.moveGroupId) {
+      var items0 = [];
+      data.emptySlotMoves.forEach(function (m) {
+        items0.push(makeCandListItem('빈 시간대 이동', m.day + '요일 ' + m.period + '교시 (세트 전원 비어있음)', null));
+      });
+      data.setSwaps.forEach(function (s) {
+        var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
+        items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', null));
+      });
+      appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
+    } else if (tier === 1) {
+      var items1 = data.map(function (c) {
+        return makeCandListItem(c.teacher + ' 교사', c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')', function () {
+          selectNormalSwap(ctx, c);
+        });
+      });
+      appendTierBlock(body, 'tier-1', '1순위: 맞교체 가능', null, items1);
+    } else if (tier === 2) {
+      var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
+      var items2 = data.map(function (c) {
+        return makeCandListItem(c.teacher + ' 교사', null, function () {
+          selectSubstitute(ctx, c.teacher);
+        });
+      });
+      appendTierBlock(body, 'tier-2', '2순위: 동교과 대강 후보', note2, items2);
+    } else if (tier === 3) {
+      var items3 = data.map(function (c) {
+        return makeCandListItem(c.teacher + ' 교사', null, function () {
+          selectSubstitute(ctx, c.teacher);
+        });
+      });
+      appendTierBlock(body, 'tier-3', '3순위: 전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
+    }
+
+    openModal();
+  }
+
+  // ---------- modal open/close ----------
+  function openModal() { document.getElementById('modalOverlay').style.display = 'flex'; }
+  function closeModal() { document.getElementById('modalOverlay').style.display = 'none'; }
+
+  // ---------- 교체/대강 후 시간표 미리보기 ----------
+  // 기존 STATE.teacherScheduleMap을 건드리지 않고(저장/반영 없음, 순수 시뮬레이션 표시용),
+  // removals(그 칸을 비움)/additions(그 칸에 새 수업을 채움)/covered(칸 내용은 그대로 두되
+  // "OO 대강" 라벨만 얹음)를 적용한 5x7 스케줄 사본과, 어느 칸이 바뀐 건지 표시하는
+  // diff 맵을 함께 돌려준다.
+  function computeModifiedSchedule(teacherName, changes) {
+    var removals = changes.removals || [];
+    var additions = changes.additions || [];
+    var covered = changes.covered || [];
+    var base = STATE.teacherScheduleMap[teacherName] || {};
+    var grid = {};
+    STATE.dayList.forEach(function (day) {
+      grid[day] = {};
+      for (var p = 1; p <= 7; p++) {
+        var rec = base[day] && base[day][p];
+        if (rec) grid[day][p] = rec;
+      }
+    });
+    var diff = {};
+    removals.forEach(function (r) {
+      if (grid[r.day]) delete grid[r.day][r.period];
+    });
+    additions.forEach(function (a) {
+      if (!grid[a.day]) grid[a.day] = {};
+      grid[a.day][a.period] = { teacher: teacherName, day: a.day, period: a.period, subject: a.subject, className: a.className, isFree: false, isChangChe: false, moveGroupId: null };
+      diff[a.day + '_' + a.period] = { type: 'added' };
+    });
+    covered.forEach(function (c) {
+      diff[c.day + '_' + c.period] = { type: 'covered', label: c.label };
+    });
+    return { grid: grid, diff: diff };
+  }
+
+  function renderMiniBoard(tableId, titleId, titleText, schedule) {
+    document.getElementById(titleId).textContent = titleText;
+    var table = document.getElementById(tableId);
+    renderBoardInto(table, STATE.dayList, function (day, period) {
+      return schedule.grid[day] && schedule.grid[day][period];
+    }, { diffMap: schedule.diff });
+  }
+
+  function showPreview(leftTeacher, leftChanges, leftLabel, rightTeacher, rightChanges, rightLabel) {
+    var leftSchedule = computeModifiedSchedule(leftTeacher, leftChanges);
+    var rightSchedule = computeModifiedSchedule(rightTeacher, rightChanges);
+    renderMiniBoard('previewLeftBoard', 'previewLeftTitle', leftTeacher + ' 교사 — ' + leftLabel, leftSchedule);
+    renderMiniBoard('previewRightBoard', 'previewRightTitle', rightTeacher + ' 교사 — ' + rightLabel, rightSchedule);
+    document.getElementById('previewSection').style.display = 'block';
+  }
+
+  function hidePreview() {
+    document.getElementById('previewSection').style.display = 'none';
+  }
+
+  // 1순위 맞교체 선택: 두 사람의 세션이 통째로 자리를 바꾼다 — 왼쪽(요청자)은 원래 칸이
+  // 비고 상대의 원래 칸에 자기 과목이 들어가며, 오른쪽(상대)은 그 반대.
+  function selectNormalSwap(ctx, candidate) {
+    var leftChanges = {
+      removals: [{ day: ctx.day, period: ctx.period }],
+      additions: [{ day: candidate.day, period: candidate.period, subject: ctx.subject, className: ctx.className }]
+    };
+    var rightChanges = {
+      removals: [{ day: candidate.day, period: candidate.period }],
+      additions: [{ day: ctx.day, period: ctx.period, subject: candidate.subject, className: candidate.className }]
+    };
+    showPreview(ctx.teacher, leftChanges, '요청', candidate.teacher, rightChanges, '상대');
+  }
+
+  // 2·3순위 대강 선택: 일방적인 호의라 상대방 시간표는 안 바뀌고, 요청자의 원래 칸에는
+  // "OO 대강" 표시만 얹는다. 상대방은 그 시간에 1회성으로 수업이 하나 추가된다.
+  function selectSubstitute(ctx, candidateTeacher) {
+    var leftChanges = {
+      covered: [{ day: ctx.day, period: ctx.period, label: candidateTeacher + ' 대강' }]
+    };
+    var rightChanges = {
+      additions: [{ day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className }]
+    };
+    showPreview(ctx.teacher, leftChanges, '요청', candidateTeacher, rightChanges, '대강');
   }
 
   // ---------- cross validation ----------
@@ -863,7 +1147,18 @@
       });
   }
 
-  document.addEventListener('DOMContentLoaded', init);
+  function wireStaticUI() {
+    document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+    document.getElementById('modalOverlay').addEventListener('click', function (e) {
+      if (e.target.id === 'modalOverlay') closeModal();
+    });
+    document.getElementById('previewCloseBtn').addEventListener('click', hidePreview);
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    wireStaticUI();
+    init();
+  });
 })();
 </script>
 </body>

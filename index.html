@@ -794,7 +794,10 @@
           td.appendChild(emptyDiv);
         } else if (state === 'free') {
           var freeDiv = document.createElement('div');
-          freeDiv.className = 'cell-disabled';
+          // 수요일 6·7교시는 학교 전체가 쉬는 시간이라 금요일 5·6교시(창체)와 같은 느낌으로
+          // 보이도록 빗금 배경을 같이 준다 — 라벨은 그대로 "공강".
+          var isWedLateFree = day === '수' && (period === 6 || period === 7);
+          freeDiv.className = isWedLateFree ? 'cell-disabled changche' : 'cell-disabled';
           freeDiv.textContent = '공강';
           td.appendChild(freeDiv);
         } else if (state === 'changche') {

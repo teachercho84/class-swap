@@ -171,19 +171,8 @@ function handleAddAbsence() {
   clearResults();
 }
 
-function handleResetAbsence() {
-  STATE.absencesByTeacher[STATE.currentTeacher] = [];
-  renderAbsenceTags();
-  clearResults();
-  document.getElementById('absencePeriodAll').checked = false;
-  document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]').forEach(function (cb) {
-    cb.checked = false;
-  });
-}
-
 function wireAbsencePanel() {
   document.getElementById('absenceAddBtn').addEventListener('click', handleAddAbsence);
-  document.getElementById('absenceResetBtn').addEventListener('click', handleResetAbsence);
   document.getElementById('absenceSaveBtn').addEventListener('click', handleSaveAbsence);
 
   var allBox = document.getElementById('absencePeriodAll');

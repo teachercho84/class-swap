@@ -88,6 +88,22 @@ function saveAbsencesToStorage() {
   localStorage.setItem(ABSENCE_STORAGE_KEY, JSON.stringify(STATE.absencesByTeacher));
 }
 
+// localStorage.setItem은 아무 화면 반응이 없어서 눌렀는지 안 눌렀는지 헷갈리므로,
+// 버튼 라벨을 잠깐 "저장됨"으로 바꿔 눌렸다는 걸 눈에 보이게 한다.
+function handleSaveAbsence() {
+  saveAbsencesToStorage();
+  var btn = document.getElementById('absenceSaveBtn');
+  if (btn.dataset.resetTimer) clearTimeout(Number(btn.dataset.resetTimer));
+  var original = btn.dataset.originalLabel || btn.textContent;
+  btn.dataset.originalLabel = original;
+  btn.textContent = '저장됨 ✓';
+  var timer = setTimeout(function () {
+    btn.textContent = original;
+    delete btn.dataset.resetTimer;
+  }, 1500);
+  btn.dataset.resetTimer = String(timer);
+}
+
 function renderAbsenceDayOptions() {
   var sel = document.getElementById('absenceDaySelect');
   sel.innerHTML = '';
@@ -168,7 +184,7 @@ function handleResetAbsence() {
 function wireAbsencePanel() {
   document.getElementById('absenceAddBtn').addEventListener('click', handleAddAbsence);
   document.getElementById('absenceResetBtn').addEventListener('click', handleResetAbsence);
-  document.getElementById('absenceSaveBtn').addEventListener('click', saveAbsencesToStorage);
+  document.getElementById('absenceSaveBtn').addEventListener('click', handleSaveAbsence);
 
   var allBox = document.getElementById('absencePeriodAll');
   var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');

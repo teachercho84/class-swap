@@ -1,18 +1,31 @@
 import { getRecord, isEmpty, isEmptyOrOwnGroup } from './data.js';
 
 // ---------- matching engine ----------
+// absences는 { day, period } 배열 — 요청 교사가 등록해둔 출장·결근 시간대. 아래 세
+// 함수(맞교체/세트간 교체/개별 조합 교체)는 전부 "요청 교사가 새로운 요일·교시로
+// 옮겨가는" 결과이므로, 그 새 요일·교시가 결근일과 겹치면 후보로 낼 수 없다 — 실제로
+// 그날 학교에 없기 때문. 대강(2·3순위)은 요청 교사의 원래 자리를 상대가 그대로
+// 메워주는 것뿐이라 결근 여부와 무관해서 건드리지 않는다.
+function isAbsentAt(absences, day, period) {
+  for (var i = 0; i < absences.length; i++) {
+    if (absences[i].day === day && absences[i].period === period) return true;
+  }
+  return false;
+}
 // 맞교체 = 반의 시간표는 그대로 두고, 그 시간에 들어가는 교사만 서로 바꾸는 것
 // (반이 실제로 다른 시간으로 옮겨가는 게 아니므로 반 충돌 조건은 보지 않음). 단, 후보 X는
 // 반드시 내 원래 반(className)을 다른 시간에 이미 가르치고 있는 교사여야 함 — 그래야 그
 // 교사가 내 시간에 대신 들어와도 같은 반 학생들에게 낯선 과목이 갑자기 끼어들지 않음.
 // 그 위에 교사 두 명의 시간만 서로 맞으면 됨: 나는 X의 원래 시간에 갈 수 있어야 하고,
 // X는 내 원래 시간에 올 수 있어야 함.
-export function findNormalSwapCandidates(ctx, teacherScheduleMap, teacherNames, weekSlots) {
+export function findNormalSwapCandidates(ctx, teacherScheduleMap, teacherNames, weekSlots, absences) {
+  absences = absences || [];
   var results = [];
   teacherNames.forEach(function (X) {
     if (X === ctx.teacher) return;
     weekSlots.forEach(function (slot) {
       var day = slot.day, period = slot.period;
+      if (isAbsentAt(absences, day, period)) return;
       var xRec = getRecord(teacherScheduleMap, X, day, period);
       if (!xRec || xRec.isFree || xRec.isChangChe || xRec.moveGroupId) return;
       if (xRec.className !== ctx.className) return;
@@ -50,7 +63,8 @@ function shareAnyTeacher(membersA, membersB) {
 // 아무것도 대신 채우지 않아서 그 이동수업을 듣던 학생들은 원래 시간에 수업이 통째로
 // 비어버린다 — 실제로 쓸 수 없는 결과라 완전히 제거했다. 세트간 교체는 두 세트가 서로의
 // 시간을 정확히 맞바꾸므로 그 시간에 항상 뭔가 수업이 있어 이런 문제가 없다.
-export function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap) {
+export function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap, absences) {
+  absences = absences || [];
   var groupA = moveGroupIndex[ctx.moveGroupId];
   var origDay = ctx.day, origPeriod = ctx.period;
   var setSwaps = [];
@@ -58,6 +72,7 @@ export function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, 
     if (gid === ctx.moveGroupId) return;
     var groupB = moveGroupIndex[gid];
     if (groupB.day === origDay && groupB.period === origPeriod) return;
+    if (isAbsentAt(absences, groupB.day, groupB.period)) return;
     if (shareAnyTeacher(groupA.members, groupB.members)) return;
     if (!allMembersFreeAt(groupA.members, groupB.day, groupB.period, teacherScheduleMap, classScheduleMap, gid)) return;
     if (!allMembersFreeAt(groupB.members, origDay, origPeriod, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) return;
@@ -118,7 +133,8 @@ function findClassSubstituteCandidates(origDay, origPeriod, className, groupMemb
 // 정확히 1명의 대체 교사를 찾고, 그 대체 교사들의 (day,period)가 모든 반에 걸쳐 완전히
 // 같은 경우만 유효한 조합으로 채택한다 — 세트 전체가 통째로 "하나의 공통 시간대"로
 // 옮겨가는 것이지, 반마다 제각각 다른 시간으로 흩어지는 게 아니기 때문이다.
-export function findMoveComboCandidates(ctx, groupA, teacherScheduleMap, teacherNames, weekSlots) {
+export function findMoveComboCandidates(ctx, groupA, teacherScheduleMap, teacherNames, weekSlots, absences) {
+  absences = absences || [];
   var classGroups = groupMoveMembersByClass(groupA.members);
   if (classGroups.length === 0) return [];
 
@@ -132,6 +148,7 @@ export function findMoveComboCandidates(ctx, groupA, teacherScheduleMap, teacher
 
   var combos = [];
   commonKeys.forEach(function (key) {
+    if (isAbsentAt(absences, perClassMaps[0][key].day, perClassMaps[0][key].period)) return;
     var pairs = [];
     var teacherToClass = {}; // 방어적 체크: 같은 대체 교사가 같은 시간에 서로 다른 반의
                               // 대체로 동시 채택되면 안 됨(teacherScheduleMap이 교사당

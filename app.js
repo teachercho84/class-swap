@@ -42,6 +42,7 @@ function renderTeacherOptions() {
     STATE.currentTeacher = sel.value;
     renderGrid();
     clearResults();
+    renderAbsenceTags();
   });
   if (STATE.teacherNames.length) {
     STATE.currentTeacher = sel.options[0].value;
@@ -63,6 +64,115 @@ function clearResults() {
   hidePreview();
 }
 
+// ---------- 출장·결근 관리 ----------
+// 교사별로 등록해둔 { day, period } 목록. 맞교체/이동수업 후보가 "내가 새로 옮겨가는
+// 요일·교시"를 결근일과 겹치지 않게 걸러내는 데 쓰인다(matching.js로 전달).
+var ABSENCE_STORAGE_KEY = 'classSwapAbsences';
+
+function currentAbsences() {
+  return STATE.absencesByTeacher[STATE.currentTeacher] || [];
+}
+
+function loadAbsencesFromStorage() {
+  try {
+    var raw = localStorage.getItem(ABSENCE_STORAGE_KEY);
+    if (!raw) return;
+    var parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') STATE.absencesByTeacher = parsed;
+  } catch (e) {
+    console.warn('[출장·결근] 저장된 데이터를 불러오지 못했습니다:', e);
+  }
+}
+
+function saveAbsencesToStorage() {
+  localStorage.setItem(ABSENCE_STORAGE_KEY, JSON.stringify(STATE.absencesByTeacher));
+}
+
+function renderAbsenceDayOptions() {
+  var sel = document.getElementById('absenceDaySelect');
+  sel.innerHTML = '';
+  STATE.dayList.forEach(function (day) {
+    var opt = document.createElement('option');
+    opt.value = day;
+    opt.textContent = day + '요일';
+    sel.appendChild(opt);
+  });
+}
+
+// 등록된 결근을 요일별로 묶어 태그로 그린다 — 1~7교시가 다 등록돼 있으면 "OO요일 전체",
+// 아니면 "OO요일 3,4,5교시"처럼 표시. 태그의 ✕는 그 요일에 등록된 항목을 전부 지운다.
+function renderAbsenceTags() {
+  var list = document.getElementById('absenceTagList');
+  list.innerHTML = '';
+  var byDay = {};
+  var order = [];
+  currentAbsences().forEach(function (a) {
+    if (!byDay[a.day]) { byDay[a.day] = []; order.push(a.day); }
+    byDay[a.day].push(a.period);
+  });
+  order.forEach(function (day) {
+    var periods = byDay[day].slice().sort(function (x, y) { return x - y; });
+    var label = periods.length >= 7 ? day + '요일 전체' : day + '요일 ' + periods.join(',') + '교시';
+
+    var tag = document.createElement('span');
+    tag.className = 'absence-tag';
+    var text = document.createElement('span');
+    text.textContent = label;
+    tag.appendChild(text);
+
+    var removeBtn = document.createElement('button');
+    removeBtn.type = 'button';
+    removeBtn.textContent = '×';
+    removeBtn.setAttribute('aria-label', label + ' 삭제');
+    removeBtn.addEventListener('click', function () { removeAbsenceDay(day); });
+    tag.appendChild(removeBtn);
+
+    list.appendChild(tag);
+  });
+}
+
+function removeAbsenceDay(day) {
+  var list = STATE.absencesByTeacher[STATE.currentTeacher] || [];
+  STATE.absencesByTeacher[STATE.currentTeacher] = list.filter(function (a) { return a.day !== day; });
+  renderAbsenceTags();
+  clearResults();
+}
+
+function handleAddAbsence() {
+  var day = document.getElementById('absenceDaySelect').value;
+  var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');
+  var periods = [];
+  checks.forEach(function (cb) { if (cb.checked) periods.push(parseInt(cb.value, 10)); });
+  if (!day || periods.length === 0) return;
+
+  if (!STATE.absencesByTeacher[STATE.currentTeacher]) STATE.absencesByTeacher[STATE.currentTeacher] = [];
+  var list = STATE.absencesByTeacher[STATE.currentTeacher];
+  periods.forEach(function (period) {
+    var exists = list.some(function (a) { return a.day === day && a.period === period; });
+    if (!exists) list.push({ day: day, period: period });
+  });
+  renderAbsenceTags();
+  clearResults();
+}
+
+function handleResetAbsence() {
+  STATE.absencesByTeacher[STATE.currentTeacher] = [];
+  renderAbsenceTags();
+  clearResults();
+}
+
+function wireAbsencePanel() {
+  document.getElementById('absenceAddBtn').addEventListener('click', handleAddAbsence);
+  document.getElementById('absenceResetBtn').addEventListener('click', handleResetAbsence);
+  document.getElementById('absenceSaveBtn').addEventListener('click', saveAbsencesToStorage);
+
+  var allBox = document.getElementById('absencePeriodAll');
+  var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');
+  allBox.addEventListener('change', function () {
+    checks.forEach(function (cb) { cb.checked = allBox.checked; });
+  });
+}
+
 var lastSelectedCell = null;
 
 function handleCellClick(rec, cellEl) {
@@ -73,15 +183,16 @@ function handleCellClick(rec, cellEl) {
 
   var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
 
+  var absences = currentAbsences();
   var tier1, tier1NonEmpty;
   if (ctx.moveGroupId) {
     var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
-    var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap).setSwaps;
-    var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
+    var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, absences).setSwaps;
+    var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
     tier1 = { setSwaps: setSwaps, combos: combos };
     tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
   } else {
-    tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
+    tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
     tier1NonEmpty = tier1.length > 0;
   }
   if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
@@ -280,6 +391,8 @@ function init() {
       renderTitle();
       renderTeacherOptions();
       renderGrid();
+      renderAbsenceDayOptions();
+      renderAbsenceTags();
     })
     .catch(function (err) {
       console.error(err);
@@ -289,9 +402,11 @@ function init() {
 
 function wireStaticUI() {
   document.getElementById('previewCloseBtn').addEventListener('click', hidePreview);
+  wireAbsencePanel();
 }
 
 document.addEventListener('DOMContentLoaded', function () {
   wireStaticUI();
+  loadAbsencesFromStorage();
   init();
 });

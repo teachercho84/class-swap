@@ -141,6 +141,79 @@ select#teacherSelect:focus-visible {
   white-space: pre-line;
 }
 
+/* ---- 출장·결근 관리: 범례 위, 가로로 넓은 바(bar) 형태 ---- */
+.absence-panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 14px 16px;
+  margin-bottom: 24px;
+}
+.absence-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.absence-panel-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  flex: none;
+}
+.absence-panel-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.88rem;
+  color: var(--ink-soft);
+}
+.absence-panel-controls select {
+  font-family: inherit;
+  font-size: 0.88rem;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.absence-period-checks { display: flex; align-items: center; gap: 8px; }
+.absence-period-checks label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
+.absence-panel-controls button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--free);
+  color: var(--ink);
+  transition: background .15s ease;
+}
+.absence-panel-controls button:hover { background: var(--line); }
+#absenceAddBtn { background: var(--accent); color: var(--accent-ink); }
+.absence-tag-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.absence-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  padding: 5px 10px;
+  border-radius: 999px;
+}
+.absence-tag button { all: unset; box-sizing: border-box; cursor: pointer; font-weight: 700; line-height: 1; }
+
 .legend {
   display: flex;
   gap: 8px;

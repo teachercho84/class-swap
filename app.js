@@ -257,7 +257,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
           text: '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동',
           diffs: [
             { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'removed' },
-            { teacher: ctx.teacher, day: s.targetDay, period: s.targetPeriod, type: 'added' }
+            { teacher: ctx.teacher, day: s.targetDay, period: s.targetPeriod, type: 'added', subject: ctx.subject, className: ctx.className }
           ]
         };
       }
@@ -277,9 +277,9 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
           text: pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + pair.candidate.day + '요일 ' + pair.candidate.period + '교시)',
           diffs: [
             { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'removed' },
-            { teacher: ctx.teacher, day: pair.candidate.day, period: pair.candidate.period, type: 'added' },
+            { teacher: ctx.teacher, day: pair.candidate.day, period: pair.candidate.period, type: 'added', subject: pair.member.subject, className: pair.member.className },
             { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, type: 'removed' },
-            { teacher: pair.candidate.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+            { teacher: pair.candidate.teacher, day: ctx.day, period: ctx.period, type: 'added', subject: pair.candidate.subject, className: pair.candidate.className }
           ]
         };
       }
@@ -295,9 +295,9 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
           text: c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)',
           diffs: [
             { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'removed' },
-            { teacher: ctx.teacher, day: c.day, period: c.period, type: 'added' },
+            { teacher: ctx.teacher, day: c.day, period: c.period, type: 'added', subject: ctx.subject, className: ctx.className },
             { teacher: c.teacher, day: c.day, period: c.period, type: 'removed' },
-            { teacher: c.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+            { teacher: c.teacher, day: ctx.day, period: ctx.period, type: 'added', subject: c.subject, className: c.className }
           ]
         };
       }
@@ -312,7 +312,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
       text: pick2.teacher + ' 교사 (대강)',
       diffs: [
         { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'covered' },
-        { teacher: pick2.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+        { teacher: pick2.teacher, day: ctx.day, period: ctx.period, type: 'added', subject: ctx.subject, className: ctx.className }
       ]
     };
   }
@@ -324,17 +324,21 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
       text: pick3.teacher + ' 교사 (대강, 참고용)',
       diffs: [
         { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'covered' },
-        { teacher: pick3.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+        { teacher: pick3.teacher, day: ctx.day, period: ctx.period, type: 'added', subject: ctx.subject, className: ctx.className }
       ]
     };
   }
   return { text: null, diffs: [] };
 }
 
-// diffsByTeacher의 { 'day_period': {type} } 하나를 교사 이름 + 최종 working-copy
-// teacherMap을 받아 .preview-col 모양(제목+미리보기 표)의 카드로 그린다 — preview.js의
-// 미리보기 카드와 같은 스타일을 그대로 재사용.
-function buildScheduleCard(title, teacher, teacherMap, dayDiff) {
+// diffsByTeacher의 { 'day_period': {type, subject?, className?} } 하나를 교사 이름을
+// 받아 .preview-col 모양(제목+미리보기 표)의 카드로 그린다 — preview.js의 미리보기
+// 카드와 같은 스타일을 그대로 재사용. working-copy 최종 상태를 그대로 읽지 않고
+// STATE의 원본 스케줄을 기본으로 삼는다 — working-copy는 "제거"를 실제로 그 자리를
+// 지워버리는 식으로 구현돼 있어서(matching.js), 그대로 읽으면 removed 자리가 그냥
+// 빈 칸으로 보인다. preview.js의 computeModifiedSchedule과 똑같이, 원본은 그대로
+// 두고(줄표시로 보이게) added 자리만 diff에 담아온 새 내용으로 덮어쓴다.
+function buildScheduleCard(title, teacher, dayDiff) {
   var col = document.createElement('div');
   col.className = 'preview-col';
   var titleEl = document.createElement('div');
@@ -348,7 +352,11 @@ function buildScheduleCard(title, teacher, teacherMap, dayDiff) {
   col.appendChild(titleEl);
   col.appendChild(scroll);
   renderBoardInto(table, STATE.dayList, function (day, period) {
-    return getRecord(teacherMap, teacher, day, period);
+    var diffEntry = dayDiff[day + '_' + period];
+    if (diffEntry && diffEntry.type === 'added') {
+      return { teacher: teacher, day: day, period: period, subject: diffEntry.subject, className: diffEntry.className, isFree: false, isChangChe: false, moveGroupId: null };
+    }
+    return getRecord(STATE.teacherScheduleMap, teacher, day, period);
   }, { diffMap: dayDiff });
   return col;
 }
@@ -390,13 +398,13 @@ function runAutoAssign() {
 
     result.diffs.forEach(function (d) {
       if (!diffsByTeacher[d.teacher]) diffsByTeacher[d.teacher] = {};
-      diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type };
+      diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type, subject: d.subject, className: d.className };
     });
   });
 
   Object.keys(diffsByTeacher).forEach(function (teacher) {
     var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
-    boardsEl.appendChild(buildScheduleCard(title, teacher, teacherMap, diffsByTeacher[teacher]));
+    boardsEl.appendChild(buildScheduleCard(title, teacher, diffsByTeacher[teacher]));
   });
 }
 

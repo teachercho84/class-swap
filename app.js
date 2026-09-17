@@ -1,961 +1,297 @@
-(function () {
-  'use strict';
-
-  // ---------- parsing ----------
-  function computeMoveGroupId(subject, className, day, period) {
-    if (!subject) return null;
-    var ch = subject.trim().slice(-1);
-    var isMove = /^[A-Z]$/.test(ch) && ch !== 'I' && ch !== 'V';
-    if (!isMove) return null;
-    var grade = className ? className.trim().charAt(0) : null;
-    if (!grade) return null;
-    return day + '_' + period + '_' + grade + '_' + ch;
-  }
-
-  // '전체 교사 시간표'(매트릭스, 학교 시간표 프로그램이 직접 내보내는 원본)를 파싱한다.
-  // buildTeacherRecords가 기대하는 { blocks: [{key, tuples}], dayList } 모양으로 돌려주므로
-  // 아래 인덱스 빌더·매칭 함수·렌더링은 전혀 손댈 필요가 없다.
-  // 교사 한 명당 정확히 2행(과목행+반정보행)이고, 요일별 교시 수가 다를 수 있어(금요일만
-  // 6교시) 헤더 두 줄을 직접 스캔해서 열 구조를 동적으로 읽는다. 교사 수는 절대 하드코딩하지
-  // 않고 시트에 실제로 있는 행 수(rows2D.length)만큼 끝까지 순회 — 학기마다 교사가 늘거나
-  // 줄어서 행이 추가/삭제돼도 코드 수정 없이 그대로 파싱된다.
-  function parseMatrixSheet(rows2D) {
-    var dayRow = rows2D[2] || [];
-    var periodRow = rows2D[3] || [];
-    // 요일 헤더 행엔 월~금 뒤에 시수/교사/담임/비고 같은 요약 열 이름도 같은 줄에 이어져
-    // 있다. 그 요약 열들은 교시번호(4행)가 비어있다는 게 유일한 구분점이라, dayList는
-    // "교시번호가 실제로 파싱된 열"에서만 뽑아야 한다 — 그냥 텍스트가 있다고 다 요일로
-    // 넣으면 시수/교사/담임/비고가 가짜 요일 열로 그리드에 붙어버린다.
-    var cols = [];
-    var currentDay = null;
-    for (var c = 2; c < dayRow.length; c++) {
-      if (dayRow[c] != null && String(dayRow[c]).trim() !== '') {
-        currentDay = String(dayRow[c]).trim();
-      }
-      var p = periodRow[c];
-      if (p == null || p === '') continue;
-      var period = parseInt(p, 10);
-      if (isNaN(period)) continue;
-      cols.push({ col: c, day: currentDay, period: period });
-    }
-    if (!cols.length) throw new Error('전체 교사 시간표에서 요일/교시 헤더를 찾을 수 없습니다.');
-    var dayList = [];
-    cols.forEach(function (cd) {
-      if (dayList.indexOf(cd.day) === -1) dayList.push(cd.day);
-    });
-
-    var blocks = [];
-    var r = 4;
-    while (r < rows2D.length) {
-      var row = rows2D[r];
-      if (row && row[1] != null && String(row[1]).trim() !== '') {
-        var teacher = String(row[1]).trim();
-        var infoRow = rows2D[r + 1] || [];
-        var tuples = [];
-        cols.forEach(function (cd) {
-          var subjRaw = row[cd.col];
-          var subject = subjRaw == null ? '' : String(subjRaw).trim().replace(/\n/g, '');
-          if (!subject) return;
-          var infoRaw = infoRow[cd.col];
-          var info = infoRaw == null ? '' : String(infoRaw).trim();
-          tuples.push({ key: teacher, day: cd.day, period: cd.period, subject: subject, info: info });
-        });
-        blocks.push({ key: teacher, tuples: tuples });
-        r += 2;
-      } else {
-        r += 1;
-      }
-    }
-    return { blocks: blocks, dayList: dayList };
-  }
-
-  function buildTeacherRecords(blocks) {
-    var records = [];
-    blocks.forEach(function (block) {
-      block.tuples.forEach(function (t) {
-        records.push({
-          teacher: t.key,
-          day: t.day,
-          period: t.period,
-          subject: t.subject,
-          className: t.info || null,
-          isFree: t.subject === '공강',
-          isChangChe: t.subject === '창체',
-          moveGroupId: computeMoveGroupId(t.subject, t.info, t.day, t.period)
-        });
-      });
-    });
-    return records;
-  }
-
-  function parseTeacherSubjects(rows2D) {
-    var headerIdx = -1;
-    for (var r = 0; r < rows2D.length; r++) {
-      var c0 = rows2D[r] && rows2D[r][0];
-      if (c0 != null && String(c0).trim() === '교사명') { headerIdx = r; break; }
-    }
-    if (headerIdx === -1) throw new Error('교사_담당교과 시트에서 헤더(교사명) 행을 찾을 수 없습니다.');
-    var map = {};
-    for (var i = headerIdx + 1; i < rows2D.length; i++) {
-      var row = rows2D[i];
-      if (!row) continue;
-      var name = row[0] == null ? '' : String(row[0]).trim();
-      if (!name) continue;
-      var subject = row[1] == null ? '' : String(row[1]).trim();
-      var note = row[2] == null ? '' : String(row[2]).trim();
-      if (map[name]) console.warn('[parseTeacherSubjects] 중복 교사명: ' + name);
-      map[name] = { subject: subject, note: note };
-    }
-    return map;
-  }
-
-  function parseSettings(rows2D) {
-    var headerIdx = -1;
-    for (var r = 0; r < rows2D.length; r++) {
-      var c0 = rows2D[r] && rows2D[r][0];
-      if (c0 != null && String(c0).trim() === '항목') { headerIdx = r; break; }
-    }
-    var labelMap = { '학교명': 'schoolName', '학년도': 'year', '학기': 'semester' };
-    var result = {};
-    var start = headerIdx === -1 ? 0 : headerIdx + 1;
-    for (var i = start; i < rows2D.length; i++) {
-      var row = rows2D[i];
-      if (!row) continue;
-      var label = row[0] == null ? '' : String(row[0]).trim();
-      var key = labelMap[label];
-      if (key) result[key] = row[1] == null ? '' : String(row[1]).trim();
-    }
-    return result;
-  }
-
-  // ---------- indices ----------
-  function buildTeacherScheduleMap(records) {
-    var map = {};
-    records.forEach(function (rec) {
-      if (!map[rec.teacher]) map[rec.teacher] = {};
-      if (!map[rec.teacher][rec.day]) map[rec.teacher][rec.day] = {};
-      map[rec.teacher][rec.day][rec.period] = rec;
-    });
-    return map;
-  }
-
-  function buildClassScheduleMap(records) {
-    var map = {};
-    records.forEach(function (rec) {
-      if (!rec.className) return;
-      if (!map[rec.className]) map[rec.className] = {};
-      if (!map[rec.className][rec.day]) map[rec.className][rec.day] = {};
-      map[rec.className][rec.day][rec.period] = rec;
-    });
-    return map;
-  }
-
-  function buildMoveGroupIndex(records) {
-    var index = {};
-    records.forEach(function (rec) {
-      if (!rec.moveGroupId) return;
-      if (!index[rec.moveGroupId]) {
-        var grade = rec.className.trim().charAt(0);
-        var tag = rec.subject.trim().slice(-1);
-        index[rec.moveGroupId] = { day: rec.day, period: rec.period, grade: grade, tag: tag, members: [] };
-      }
-      index[rec.moveGroupId].members.push({ teacher: rec.teacher, subject: rec.subject, className: rec.className });
-    });
-    return index;
-  }
-
-  function getRecord(map, key, day, period) {
-    return map[key] && map[key][day] && map[key][day][period];
-  }
-  function isEmpty(map, key, day, period) {
-    var rec = getRecord(map, key, day, period);
-    return !rec || rec.isFree === true;
-  }
-  function isEmptyOrOwnGroup(map, key, day, period, excludeGroupId) {
-    var rec = getRecord(map, key, day, period);
-    if (!rec || rec.isFree) return true;
-    if (excludeGroupId && rec.moveGroupId === excludeGroupId) return true;
-    return false;
-  }
-  function allWeekSlots(dayList) {
-    var slots = [];
-    dayList.forEach(function (day) {
-      for (var period = 1; period <= 7; period++) slots.push({ day: day, period: period });
-    });
-    return slots;
-  }
-
-  // ---------- matching engine ----------
-  // 맞교체 = 반의 시간표는 그대로 두고, 그 시간에 들어가는 교사만 서로 바꾸는 것
-  // (반이 실제로 다른 시간으로 옮겨가는 게 아니므로 반 충돌 조건은 보지 않음). 단, 후보 X는
-  // 반드시 내 원래 반(className)을 다른 시간에 이미 가르치고 있는 교사여야 함 — 그래야 그
-  // 교사가 내 시간에 대신 들어와도 같은 반 학생들에게 낯선 과목이 갑자기 끼어들지 않음.
-  // 그 위에 교사 두 명의 시간만 서로 맞으면 됨: 나는 X의 원래 시간에 갈 수 있어야 하고,
-  // X는 내 원래 시간에 올 수 있어야 함.
-  function findNormalSwapCandidates(ctx, teacherScheduleMap, teacherNames, weekSlots) {
-    var results = [];
-    teacherNames.forEach(function (X) {
-      if (X === ctx.teacher) return;
-      weekSlots.forEach(function (slot) {
-        var day = slot.day, period = slot.period;
-        var xRec = getRecord(teacherScheduleMap, X, day, period);
-        if (!xRec || xRec.isFree || xRec.isChangChe || xRec.moveGroupId) return;
-        if (xRec.className !== ctx.className) return;
-        if (!isEmpty(teacherScheduleMap, ctx.teacher, day, period)) return;
-        if (!isEmpty(teacherScheduleMap, X, ctx.day, ctx.period)) return;
-        results.push({ teacher: X, day: day, period: period, className: xRec.className, subject: xRec.subject });
-      });
-    });
-    return results;
-  }
-
-  function allMembersFreeAt(members, day, period, teacherScheduleMap, classScheduleMap, excludeGroupId) {
-    for (var i = 0; i < members.length; i++) {
-      var m = members[i];
-      if (!isEmptyOrOwnGroup(teacherScheduleMap, m.teacher, day, period, excludeGroupId)) return false;
-      if (!isEmptyOrOwnGroup(classScheduleMap, m.className, day, period, excludeGroupId)) return false;
-    }
-    return true;
-  }
-
-  // 두 세트가 교사를 한 명이라도 공유하면 안 됨 — 같은 이동수업 그룹이 주중에 여러 번
-  // (요일만 다르게) 반복되는 경우, moveGroupId는 요일별로 다르지만 실제로는 같은 사람들이라
-  // "세트간 교체"의 상대가 될 수 없다 (그 사람 본인과 바꾸는 셈이라 아무 의미가 없음).
-  function shareAnyTeacher(membersA, membersB) {
-    for (var i = 0; i < membersA.length; i++) {
-      for (var j = 0; j < membersB.length; j++) {
-        if (membersA[i].teacher === membersB[j].teacher) return true;
-      }
-    }
-    return false;
-  }
-
-  // 이동수업 세트는 "다른 세트와 맞바꾸는 것"만 후보로 삼는다. 예전엔 상대 없이 그냥 빈
-  // 시간대로 옮기는 방식(빈 시간대 이동)도 있었는데, 그러면 세트가 떠난 원래 시간대를
-  // 아무것도 대신 채우지 않아서 그 이동수업을 듣던 학생들은 원래 시간에 수업이 통째로
-  // 비어버린다 — 실제로 쓸 수 없는 결과라 완전히 제거했다. 세트간 교체는 두 세트가 서로의
-  // 시간을 정확히 맞바꾸므로 그 시간에 항상 뭔가 수업이 있어 이런 문제가 없다.
-  function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap) {
-    var groupA = moveGroupIndex[ctx.moveGroupId];
-    var origDay = ctx.day, origPeriod = ctx.period;
-    var setSwaps = [];
-    Object.keys(moveGroupIndex).forEach(function (gid) {
-      if (gid === ctx.moveGroupId) return;
-      var groupB = moveGroupIndex[gid];
-      if (groupB.day === origDay && groupB.period === origPeriod) return;
-      if (shareAnyTeacher(groupA.members, groupB.members)) return;
-      if (!allMembersFreeAt(groupA.members, groupB.day, groupB.period, teacherScheduleMap, classScheduleMap, gid)) return;
-      if (!allMembersFreeAt(groupB.members, origDay, origPeriod, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) return;
-      setSwaps.push({ type: 'setSwap', otherGroupId: gid, otherMembers: groupB.members, targetDay: groupB.day, targetPeriod: groupB.period });
-    });
-    return { setSwaps: setSwaps };
-  }
-
-  function groupMoveMembersByClass(members) {
-    var order = [];
-    var byClass = {};
-    members.forEach(function (m) {
-      if (!byClass[m.className]) { byClass[m.className] = []; order.push(m.className); }
-      byClass[m.className].push(m);
-    });
-    return order.map(function (cn) { return { className: cn, members: byClass[cn] }; });
-  }
-
-  // 세트에서 중요한 건 세트원(교사) 수가 아니라 세트 안의 서로 다른 반(className) 수다 —
-  // 한 반이 이동수업으로 여러 교사에게 동시에 나뉘어 있어도(예: 1반이 물리/생명 두 과목으로
-  // 분반) 그 반을 대신 채워줄 대체 교사는 반마다 딱 1명이면 된다. 반 C를 (day,period)에
-  // 정규(비이동) 수업으로 담당하는 교사 X를 찾되, 그 반을 담당하는 세트원 전원이 X의
-  // (day,period)에 개인적으로 비어있어야 다 같이 그 시간으로 옮겨갈 수 있다(6.2의 "후보 하나당
-  // 나 하나 비면 됨"을 "반 그룹 전원이 비어있어야 함"으로 일반화).
-  //
-  // xRec.moveGroupId가 없어야 한다는 조건이 핵심 불변식을 보장한다: 이동수업 태깅 관례(2.5)상
-  // 어떤 (day,period)에 한 반이 실제로 여러 교사에게 나뉘어 있다면 그 레코드들은 전부
-  // moveGroupId가 붙는다. 즉 moveGroupId가 없는 레코드는 그 반·그 시간의 유일한 정규
-  // 담당자이므로, 같은 (day,period)에 같은 className을 가진 비이동 레코드는 최대 1개뿐이다 —
-  // 그래서 byKey에는 항상 최대 1개 후보만 쌓인다(위반 시 데이터 이상 신호로 warn).
-  //
-  // 세트 A의 멤버는 그 누구도 이 함수의 후보가 될 수 없다 — 전원이 세트 A의 원래 시간에
-  // 이미 그 세트의 레코드로 바쁘므로 "X가 원래 시간에 비어있어야 함" 조건에서 자동 제외된다.
-  function findClassSubstituteCandidates(origDay, origPeriod, className, groupMembers, teacherScheduleMap, teacherNames, weekSlots) {
-    var byKey = {};
-    teacherNames.forEach(function (X) {
-      weekSlots.forEach(function (slot) {
-        var day = slot.day, period = slot.period;
-        var xRec = getRecord(teacherScheduleMap, X, day, period);
-        if (!xRec || xRec.isFree || xRec.isChangChe || xRec.moveGroupId) return;
-        if (xRec.className !== className) return;
-        if (!isEmpty(teacherScheduleMap, X, origDay, origPeriod)) return;
-        var allFree = groupMembers.every(function (m) {
-          return isEmpty(teacherScheduleMap, m.teacher, day, period);
-        });
-        if (!allFree) return;
-        var key = day + '_' + period;
-        if (byKey[key]) {
-          console.warn('[findClassSubstituteCandidates] 같은 (day,period)/반에 비이동 후보가 2명 이상 — 데이터의 이동수업 태깅 관례 위반 가능성:', className, key, byKey[key].teacher, xRec.teacher);
-        }
-        byKey[key] = { teacher: X, day: day, period: period, className: xRec.className, subject: xRec.subject };
-      });
-    });
-    return byKey;
-  }
-
-  // 세트 A를 "세트원 교사" 단위가 아니라 "서로 다른 반(className)" 단위로 묶은 뒤, 반마다
-  // 정확히 1명의 대체 교사를 찾고, 그 대체 교사들의 (day,period)가 모든 반에 걸쳐 완전히
-  // 같은 경우만 유효한 조합으로 채택한다 — 세트 전체가 통째로 "하나의 공통 시간대"로
-  // 옮겨가는 것이지, 반마다 제각각 다른 시간으로 흩어지는 게 아니기 때문이다.
-  function findMoveComboCandidates(ctx, groupA, teacherScheduleMap, teacherNames, weekSlots) {
-    var classGroups = groupMoveMembersByClass(groupA.members);
-    if (classGroups.length === 0) return [];
-
-    var perClassMaps = classGroups.map(function (g) {
-      return findClassSubstituteCandidates(ctx.day, ctx.period, g.className, g.members, teacherScheduleMap, teacherNames, weekSlots);
-    });
-
-    var commonKeys = Object.keys(perClassMaps[0]).filter(function (key) {
-      return perClassMaps.every(function (m) { return !!m[key]; });
-    });
-
-    var combos = [];
-    commonKeys.forEach(function (key) {
-      var pairs = [];
-      var teacherToClass = {}; // 방어적 체크: 같은 대체 교사가 같은 시간에 서로 다른 반의
-                                // 대체로 동시 채택되면 안 됨(teacherScheduleMap이 교사당
-                                // 슬롯 하나뿐이라 구조적으로 불가능하지만 안전망으로 확인).
-      var conflict = false;
-      classGroups.forEach(function (g, idx) {
-        var candidate = perClassMaps[idx][key];
-        if (teacherToClass[candidate.teacher] && teacherToClass[candidate.teacher] !== g.className) {
-          conflict = true;
-        }
-        teacherToClass[candidate.teacher] = g.className;
-        g.members.forEach(function (m) {
-          pairs.push({ member: m, candidate: candidate });
-        });
-      });
-      if (conflict) {
-        console.warn('[findMoveComboCandidates] 동일 대체 교사가 같은 시간에 두 반의 대체로 중복 채택되어 조합에서 제외:', key);
-        return;
-      }
-      combos.push({ targetDay: perClassMaps[0][key].day, targetPeriod: perClassMaps[0][key].period, pairs: pairs });
-    });
-    return combos;
-  }
-
-  function findSubjectSubstituteCandidates(ctx, teacherSubjects, teacherScheduleMap, teacherNames) {
-    var isCareer = ctx.subject.trim() === '진로';
-    var mySubject = teacherSubjects[ctx.teacher] ? teacherSubjects[ctx.teacher].subject : null;
-    var results = [];
-    teacherNames.forEach(function (X) {
-      if (X === ctx.teacher) return;
-      if (!isEmpty(teacherScheduleMap, X, ctx.day, ctx.period)) return;
-      if (isCareer) {
-        results.push({ teacher: X });
-      } else {
-        var xSubject = teacherSubjects[X] ? teacherSubjects[X].subject : null;
-        if (xSubject && mySubject && xSubject === mySubject) results.push({ teacher: X });
-      }
-    });
-    return results;
-  }
-
-  function findFallbackSubstituteCandidates(ctx, teacherScheduleMap, teacherNames) {
-    var results = [];
-    teacherNames.forEach(function (X) {
-      if (X === ctx.teacher) return;
-      if (!isEmpty(teacherScheduleMap, X, ctx.day, ctx.period)) return;
-      results.push({ teacher: X });
-    });
-    return results;
-  }
-
-  // ---------- app state ----------
-  var STATE = {
-    records: [], dayList: [], teacherScheduleMap: {}, classScheduleMap: {},
-    moveGroupIndex: {}, teacherSubjects: {}, teacherNames: [], weekSlots: [],
-    currentTeacher: null, settings: {}
-  };
-
-  // ---------- render ----------
-  function showError(msg) {
-    var el = document.getElementById('errorBanner');
-    el.textContent = msg;
-    el.style.display = 'block';
-  }
-
-  function renderTitle() {
-    var s = STATE.settings;
-    var title = (s.year || '') + '학년도 ' + (s.semester || '') + ' ' + (s.schoolName || '') + ' 수업 시간표 교체';
-    document.title = title;
-    document.getElementById('pageTitle').textContent = title;
-    document.getElementById('pageSub').textContent = '칸을 눌러 맞교체·대강 후보를 찾아보세요.';
-  }
-
-  function renderTeacherOptions() {
-    var sel = document.getElementById('teacherSelect');
-    sel.innerHTML = '';
-    STATE.teacherNames.slice().sort(function (a, b) { return a.localeCompare(b, 'ko'); }).forEach(function (name) {
-      var opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      sel.appendChild(opt);
-    });
-    sel.disabled = false;
-    sel.addEventListener('change', function () {
-      STATE.currentTeacher = sel.value;
-      renderGrid();
-      clearResults();
-    });
-    if (STATE.teacherNames.length) {
-      STATE.currentTeacher = sel.options[0].value;
-      sel.value = STATE.currentTeacher;
-    }
-  }
-
-  function cellState(rec) {
-    if (!rec) return 'empty';
-    if (rec.isFree) return 'free';
-    if (rec.isChangChe) return 'changche';
-    if (rec.moveGroupId) return 'move';
-    return 'normal';
-  }
-
-  // 실제 시간표 그리드와 미리보기용 절반크기 시간표가 공유하는 렌더 로직.
-  // getRec(day,period)가 레코드를 돌려주고, opts.onCellClick이 있으면 그 셀에 클릭 핸들러를
-  // 붙인다(미리보기는 안 붙여서 읽기 전용이 됨). opts.diffMap이 있으면 "요일_교시" 키로
-  // 추가 CSS 클래스(slot-added/slot-covered)와 라벨을 얹는다(미리보기 diff 표시용).
-  function renderBoardInto(table, dayList, getRec, opts) {
-    opts = opts || {};
-    table.innerHTML = '';
-    var thead = document.createElement('thead');
-    var headRow = document.createElement('tr');
-    headRow.appendChild(document.createElement('th'));
-    dayList.forEach(function (day) {
-      var th = document.createElement('th');
-      th.textContent = day;
-      headRow.appendChild(th);
-    });
-    thead.appendChild(headRow);
-    table.appendChild(thead);
-
-    var tbody = document.createElement('tbody');
-    for (var period = 1; period <= 7; period++) {
-      var tr = document.createElement('tr');
-      var pCell = document.createElement('td');
-      pCell.className = 'period-cell';
-      pCell.textContent = period + '교시';
-      tr.appendChild(pCell);
-
-      dayList.forEach(function (day) {
-        var rec = getRec(day, period);
-        var td = document.createElement('td');
-        td.className = 'slot';
-        var state = cellState(rec);
-        var diffInfo = opts.diffMap ? opts.diffMap[day + '_' + period] : null;
-        if (diffInfo) td.className += ' slot-' + diffInfo.type;
-
-        if (state === 'empty') {
-          var emptyDiv = document.createElement('div');
-          emptyDiv.className = 'cell-empty';
-          td.appendChild(emptyDiv);
-        } else if (state === 'free') {
-          var freeDiv = document.createElement('div');
-          // 수요일 6·7교시는 학교 전체가 쉬는 시간이라 금요일 5·6교시(창체)와 같은 느낌으로
-          // 보이도록 빗금 배경을 같이 준다 — 라벨은 그대로 "공강".
-          var isWedLateFree = day === '수' && (period === 6 || period === 7);
-          freeDiv.className = isWedLateFree ? 'cell-disabled changche' : 'cell-disabled';
-          freeDiv.textContent = '공강';
-          td.appendChild(freeDiv);
-        } else if (state === 'changche') {
-          var ccDiv = document.createElement('div');
-          ccDiv.className = 'cell-disabled changche';
-          ccDiv.textContent = '창체';
-          td.appendChild(ccDiv);
-        } else {
-          if (state === 'move') td.className += ' cell-move';
-          var btn = document.createElement('button');
-          btn.className = 'cell-btn';
-          btn.type = 'button';
-          var subjSpan = document.createElement('span');
-          subjSpan.className = 'subj';
-          subjSpan.textContent = rec.subject;
-          var clsSpan = document.createElement('span');
-          clsSpan.className = 'cls';
-          clsSpan.textContent = rec.className || '';
-          btn.appendChild(subjSpan);
-          btn.appendChild(clsSpan);
-          if (opts.onCellClick) {
-            btn.addEventListener('click', (function (record, cellEl) {
-              return function () { opts.onCellClick(record, cellEl); };
-            })(rec, td));
-          }
-          td.appendChild(btn);
-        }
-        tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    }
-    table.appendChild(tbody);
-  }
-
-  function renderGrid() {
-    var table = document.getElementById('boardTable');
-    renderBoardInto(table, STATE.dayList, function (day, period) {
-      return getRecord(STATE.teacherScheduleMap, STATE.currentTeacher, day, period);
-    }, { onCellClick: handleCellClick });
-    document.getElementById('appBody').style.display = 'block';
-  }
-
-  function clearResults() {
-    var panel = document.getElementById('sidePanel');
-    panel.innerHTML = '<div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>';
-    hidePreview();
-  }
-
-  var lastSelectedCell = null;
-
-  function handleCellClick(rec, cellEl) {
-    if (lastSelectedCell) lastSelectedCell.classList.remove('cell-selected');
-    cellEl.classList.add('cell-selected');
-    lastSelectedCell = cellEl;
-    hidePreview(); // 새 셀을 클릭하면 이전 미리보기는 더 이상 유효하지 않으므로 접어둠
-
-    var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
-
-    var tier1, tier1NonEmpty;
-    if (ctx.moveGroupId) {
-      var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
-      var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap).setSwaps;
-      var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
-      tier1 = { setSwaps: setSwaps, combos: combos };
-      tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
-    } else {
-      tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
-      tier1NonEmpty = tier1.length > 0;
-    }
-    if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
-
-    var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, STATE.teacherScheduleMap, STATE.teacherNames);
-    if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
-
-    var tier3 = findFallbackSubstituteCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames);
-    renderResults(ctx, 3, tier3);
-  }
-
-  // 후보 한 줄(<li>)을 만든다. onSelect가 있으면 클릭 가능한 버튼으로, 없으면(이동수업처럼
-  // 선택해서 미리보기를 만들 수 없는 경우) 그냥 텍스트로 렌더링.
-  function makeCandListItem(whoText, whereText, onSelect) {
-    var li = document.createElement('li');
-    if (onSelect) {
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'cand-btn';
-      var who = document.createElement('span');
-      who.className = 'who';
-      who.textContent = whoText;
-      btn.appendChild(who);
-      if (whereText) {
-        var where = document.createElement('span');
-        where.className = 'where';
-        where.textContent = whereText;
-        btn.appendChild(where);
-      }
-      btn.addEventListener('click', function () {
-        var list = btn.closest('.cand-list');
-        if (list) {
-          var prev = list.querySelector('.is-selected');
-          if (prev) prev.classList.remove('is-selected');
-        }
-        btn.classList.add('is-selected');
-        onSelect();
-      });
-      li.appendChild(btn);
-    } else {
-      var whoSpan = document.createElement('span');
-      whoSpan.className = 'who';
-      whoSpan.textContent = whoText;
-      li.appendChild(whoSpan);
-      if (whereText) {
-        var whereSpan = document.createElement('span');
-        whereSpan.className = 'where';
-        whereSpan.textContent = whereText;
-        li.appendChild(whereSpan);
-      }
-    }
-    return li;
-  }
-
-  function appendTierBlock(container, tierClass, headingText, noteText, items) {
-    var tierDiv = document.createElement('div');
-    tierDiv.className = 'tier ' + tierClass;
-    var h3 = document.createElement('h3');
-    h3.textContent = headingText;
-    tierDiv.appendChild(h3);
-    if (noteText) {
-      var note = document.createElement('div');
-      note.className = 'note';
-      note.textContent = noteText;
-      tierDiv.appendChild(note);
-    }
-    if (items.length === 0) {
-      var empty = document.createElement('div');
-      empty.className = 'empty-state';
-      empty.textContent = '가능한 교체·대강 후보가 없습니다.';
-      tierDiv.appendChild(empty);
-    } else {
-      var ul = document.createElement('ul');
-      ul.className = 'cand-list';
-      items.forEach(function (li) { ul.appendChild(li); });
-      tierDiv.appendChild(ul);
-    }
-    container.appendChild(tierDiv);
-  }
-
-  // combo.pairs(세트원 단위, 반이 같으면 같은 candidate가 여러 번 나타남)를 후보 목록 표시용으로
-  // 다시 반(className) 단위로 묶는다 — 반 하나에 세트원이 여러 명이어도 대체 교사는 한 번만
-  // 언급되도록.
-  function groupComboPairsByClass(pairs) {
-    var order = [];
-    var byClass = {};
-    pairs.forEach(function (p) {
-      var cn = p.member.className;
-      if (!byClass[cn]) { byClass[cn] = { className: cn, members: [], candidate: p.candidate }; order.push(cn); }
-      byClass[cn].members.push(p.member);
-    });
-    return order.map(function (cn) { return byClass[cn]; });
-  }
-
-  // 오른쪽 후보 패널에 후보 목록을 그린다. 1순위(일반)·2·3순위 후보는 클릭하면 선택되어
-  // 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다. 이동수업 세트(1순위, moveGroupId
-  // 있는 경우)는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.
-  function renderResults(ctx, tier, data) {
-    var body = document.getElementById('sidePanel');
-    body.innerHTML = '';
-
-    var titleDiv = document.createElement('div');
-    titleDiv.className = 'results-title';
-    titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시';
-    body.appendChild(titleDiv);
-
-    var metaDiv = document.createElement('div');
-    metaDiv.className = 'results-meta';
-    metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
-    body.appendChild(metaDiv);
-
-    if (tier === 1 && ctx.moveGroupId) {
-      var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
-      var items0 = [];
-      data.setSwaps.forEach(function (s) {
-        var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
-        items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
-          selectMoveSetSwap(ctx, groupA, s);
-        }));
-      });
-      data.combos.forEach(function (combo) {
-        var classText = groupComboPairsByClass(combo.pairs).map(function (g) {
-          var memberText = g.members.map(function (m) { return m.teacher + '(' + m.subject + ')'; }).join('+');
-          return g.className + '반 [' + memberText + '] ↔ ' + g.candidate.teacher + ' 교사';
-        }).join(' · ');
-        var whereText = combo.targetDay + '요일 ' + combo.targetPeriod + '교시로 이동 — ' + classText;
-        items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
-          selectMoveComboSwap(ctx, groupA, combo);
-        }));
-      });
-      appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
-    } else if (tier === 1) {
-      var items1 = data.map(function (c) {
-        return makeCandListItem(c.teacher + ' 교사', c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')', function () {
-          selectNormalSwap(ctx, c);
-        });
-      });
-      appendTierBlock(body, 'tier-1', '1순위: 맞교체 가능', null, items1);
-    } else if (tier === 2) {
-      var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
-      var items2 = data.map(function (c) {
-        return makeCandListItem(c.teacher + ' 교사', null, function () {
-          selectSubstitute(ctx, c.teacher);
-        });
-      });
-      appendTierBlock(body, 'tier-2', '2순위: 동교과 대강 후보', note2, items2);
-    } else if (tier === 3) {
-      var items3 = data.map(function (c) {
-        return makeCandListItem(c.teacher + ' 교사', null, function () {
-          selectSubstitute(ctx, c.teacher);
-        });
-      });
-      appendTierBlock(body, 'tier-3', '3순위: 전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
-    }
-  }
-
-  // ---------- 교체/대강 후 시간표 미리보기 ----------
-  // 기존 STATE.teacherScheduleMap을 건드리지 않고(저장/반영 없음, 순수 시뮬레이션 표시용),
-  // removals(그 칸을 비움)/additions(그 칸에 새 수업을 채움)/covered(칸 내용은 그대로 두되
-  // "OO 대강" 라벨만 얹음)를 적용한 5x7 스케줄 사본과, 어느 칸이 바뀐 건지 표시하는
-  // diff 맵을 함께 돌려준다.
-  function computeModifiedSchedule(teacherName, changes) {
-    var removals = changes.removals || [];
-    var additions = changes.additions || [];
-    var covered = changes.covered || [];
-    var base = STATE.teacherScheduleMap[teacherName] || {};
-    var grid = {};
-    STATE.dayList.forEach(function (day) {
-      grid[day] = {};
-      for (var p = 1; p <= 7; p++) {
-        var rec = base[day] && base[day][p];
-        if (rec) grid[day][p] = rec;
-      }
-    });
-    var diff = {};
-    removals.forEach(function (r) {
-      // 칸을 지우지 않고 원래 내용을 그대로 둔 채 "사라지는 시간"으로만 표시 —
-      // 빨간 점선으로 무엇이 없어지는지 눈에 보이게 하기 위함.
-      diff[r.day + '_' + r.period] = { type: 'removed' };
-    });
-    additions.forEach(function (a) {
-      if (!grid[a.day]) grid[a.day] = {};
-      grid[a.day][a.period] = { teacher: teacherName, day: a.day, period: a.period, subject: a.subject, className: a.className, isFree: false, isChangChe: false, moveGroupId: null };
-      diff[a.day + '_' + a.period] = { type: 'added' };
-    });
-    covered.forEach(function (c) {
-      diff[c.day + '_' + c.period] = { type: 'covered' };
-    });
-    return { grid: grid, diff: diff };
-  }
-
-  function renderMiniBoardInto(tableEl, titleEl, titleText, schedule) {
-    if (titleEl) titleEl.textContent = titleText;
-    renderBoardInto(tableEl, STATE.dayList, function (day, period) {
-      return schedule.grid[day] && schedule.grid[day][period];
-    }, { diffMap: schedule.diff });
-  }
-
-  function renderMiniBoard(tableId, titleId, titleText, schedule) {
-    renderMiniBoardInto(document.getElementById(tableId), document.getElementById(titleId), titleText, schedule);
-  }
-
-  // 조합 교체 미리보기(세로 N쌍)를 쓴 뒤 일반/대강/세트간 교체로 다시 돌아올 때 이전
-  // 조합 미리보기가 안 남도록, 고정 좌우 2장 구조를 보여줄 때마다 조합 행 컨테이너는 숨긴다.
-  function showStaticPreviewCols() {
-    document.getElementById('previewComboRows').style.display = 'none';
-    document.getElementById('previewStaticCols').style.display = '';
-  }
-
-  function showPreview(leftTeacher, leftChanges, leftLabel, rightTeacher, rightChanges, rightLabel) {
-    var leftSchedule = computeModifiedSchedule(leftTeacher, leftChanges);
-    var rightSchedule = computeModifiedSchedule(rightTeacher, rightChanges);
-    renderMiniBoard('previewLeftBoard', 'previewLeftTitle', leftTeacher + ' 교사 — ' + leftLabel, leftSchedule);
-    renderMiniBoard('previewRightBoard', 'previewRightTitle', rightTeacher + ' 교사 — ' + rightLabel, rightSchedule);
-    showStaticPreviewCols();
-    document.getElementById('previewSection').style.display = 'block';
-  }
-
-  function hidePreview() {
-    document.getElementById('previewSection').style.display = 'none';
-  }
-
-  // previewComboRows 안의 "라벨 + 좌우 2단 미리보기" 한 줄을 만드는 공용 헬퍼. leftInfo/
-  // rightInfo는 null이거나 { teacherName, titleText, changes } — null이면 그 쪽 칸은 빈
-  // 채로 둔다(세트간 교체처럼 두 세트의 인원수가 달라 자연스러운 상대가 없는 경우용).
-  function buildComboPreviewRow(labelText, leftInfo, rightInfo) {
-    var row = document.createElement('div');
-
-    var label = document.createElement('div');
-    label.className = 'preview-combo-row-label';
-    label.textContent = labelText;
-    row.appendChild(label);
-
-    var cols = document.createElement('div');
-    cols.className = 'preview-cols';
-
-    function buildCol(info) {
-      var col = document.createElement('div');
-      col.className = 'preview-col';
-      var title = document.createElement('div');
-      title.className = 'preview-col-title';
-      var scroll = document.createElement('div');
-      scroll.className = 'board-scroll';
-      var table = document.createElement('table');
-      table.className = 'board mini-board';
-      scroll.appendChild(table);
-      col.appendChild(title);
-      col.appendChild(scroll);
-      if (info) {
-        var schedule = computeModifiedSchedule(info.teacherName, info.changes);
-        renderMiniBoardInto(table, title, info.titleText, schedule);
-      }
-      return col;
-    }
-
-    cols.appendChild(buildCol(leftInfo));
-    cols.appendChild(buildCol(rightInfo));
-    row.appendChild(cols);
-    return row;
-  }
-
-  // 세트간 교체 선택: 세트 A 전체가 원래 시간을 비우고 세트 B의 원래 시간으로, 세트 B
-  // 전체가 그 반대로 이동한다 — 개별 조합 교체와 마찬가지로 실제 개인 교사 시간표를 그대로
-  // 보여준다. 다만 세트 A와 세트 B 사이엔 "누가 누구와 자리를 바꾸는지"에 대한 자연스러운
-  // 1:1 대응이 없으므로(둘 다 그냥 통째로 서로의 시간대로 이동할 뿐), members 배열의
-  // 순서대로 나란히 짝지어 보여준다 — 인원수가 다르면 짧은 쪽은 그 줄의 반대편 칸을 비운다.
-  function selectMoveSetSwap(ctx, groupA, swap) {
-    var container = document.getElementById('previewComboRows');
-    container.innerHTML = '';
-
-    var header = document.createElement('div');
-    header.className = 'preview-combo-row-label';
-    header.textContent = ctx.day + '요일 ' + ctx.period + '교시 세트 ↔ ' + swap.targetDay + '요일 ' + swap.targetPeriod + '교시 세트 (세트간 교체)';
-    container.appendChild(header);
-
-    var membersA = groupA.members;
-    var membersB = swap.otherMembers;
-    var maxLen = Math.max(membersA.length, membersB.length);
-    for (var i = 0; i < maxLen; i++) {
-      var mA = membersA[i] || null;
-      var mB = membersB[i] || null;
-      var leftInfo = mA ? {
-        teacherName: mA.teacher,
-        titleText: mA.teacher + ' 교사 — 요청',
-        changes: {
-          removals: [{ day: ctx.day, period: ctx.period }],
-          additions: [{ day: swap.targetDay, period: swap.targetPeriod, subject: mA.subject, className: mA.className }]
-        }
-      } : null;
-      var rightInfo = mB ? {
-        teacherName: mB.teacher,
-        titleText: mB.teacher + ' 교사 — 상대',
-        changes: {
-          removals: [{ day: swap.targetDay, period: swap.targetPeriod }],
-          additions: [{ day: ctx.day, period: ctx.period, subject: mB.subject, className: mB.className }]
-        }
-      } : null;
-      var label = (mA ? mA.teacher : '') + ' ↔ ' + (mB ? mB.teacher : '');
-      container.appendChild(buildComboPreviewRow(label, leftInfo, rightInfo));
-    }
-
-    document.getElementById('previewStaticCols').style.display = 'none';
-    container.style.display = '';
-    document.getElementById('previewSection').style.display = 'block';
-  }
-
-  // 개별 조합 교체 선택: 세트원 수(N)만큼 좌우 쌍(각 쌍은 selectNormalSwap과 완전히 같은
-  // 원리)을 세로로 나열한다. 각 쌍의 왼쪽은 세트원 교사 관점(원래 슬롯 제거, 후보 슬롯에
-  // 세트원 자기 과목 추가), 오른쪽은 후보 교사 관점(그 반대).
-  function selectMoveComboSwap(ctx, groupA, combo) {
-    var container = document.getElementById('previewComboRows');
-    container.innerHTML = '';
-
-    var header = document.createElement('div');
-    header.className = 'preview-combo-row-label';
-    header.textContent = ctx.day + '요일 ' + ctx.period + '교시 세트 → ' + combo.targetDay + '요일 ' + combo.targetPeriod + '교시로 이동';
-    container.appendChild(header);
-
-    combo.pairs.forEach(function (p) {
-      var leftInfo = {
-        teacherName: p.member.teacher,
-        titleText: p.member.teacher + ' 교사 — 요청',
-        changes: {
-          removals: [{ day: ctx.day, period: ctx.period }],
-          additions: [{ day: p.candidate.day, period: p.candidate.period, subject: p.member.subject, className: p.member.className }]
-        }
-      };
-      var rightInfo = {
-        teacherName: p.candidate.teacher,
-        titleText: p.candidate.teacher + ' 교사 — 상대',
-        changes: {
-          removals: [{ day: p.candidate.day, period: p.candidate.period }],
-          additions: [{ day: ctx.day, period: ctx.period, subject: p.candidate.subject, className: p.candidate.className }]
-        }
-      };
-      container.appendChild(buildComboPreviewRow(p.member.teacher + ' ↔ ' + p.candidate.teacher, leftInfo, rightInfo));
-    });
-
-    document.getElementById('previewStaticCols').style.display = 'none';
-    container.style.display = '';
-    document.getElementById('previewSection').style.display = 'block';
-  }
-
-  // 1순위 맞교체 선택: 두 사람의 세션이 통째로 자리를 바꾼다 — 왼쪽(요청자)은 원래 칸이
-  // 비고 상대의 원래 칸에 자기 과목이 들어가며, 오른쪽(상대)은 그 반대.
-  function selectNormalSwap(ctx, candidate) {
-    var leftChanges = {
-      removals: [{ day: ctx.day, period: ctx.period }],
-      additions: [{ day: candidate.day, period: candidate.period, subject: ctx.subject, className: ctx.className }]
-    };
-    var rightChanges = {
-      removals: [{ day: candidate.day, period: candidate.period }],
-      additions: [{ day: ctx.day, period: ctx.period, subject: candidate.subject, className: candidate.className }]
-    };
-    showPreview(ctx.teacher, leftChanges, '요청', candidate.teacher, rightChanges, '상대');
-  }
-
-  // 2·3순위 대강 선택: 일방적인 호의라 상대방 시간표는 안 바뀌고, 요청자의 원래 칸은
-  // 점선 테두리로만 "대강으로 채워짐"을 표시한다(글자 라벨은 칸이 비좁아 넣지 않음 —
-  // 위 제목에 이미 어느 교사가 대강하는지 나와 있음). 상대방은 그 시간에 1회성으로
-  // 수업이 하나 추가된다.
-  function selectSubstitute(ctx, candidateTeacher) {
-    var leftChanges = {
-      covered: [{ day: ctx.day, period: ctx.period }]
-    };
-    var rightChanges = {
-      additions: [{ day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className }]
-    };
-    showPreview(ctx.teacher, leftChanges, '요청', candidateTeacher, rightChanges, '대강');
-  }
-
-  // ---------- cross validation ----------
-  function crossValidateTeacherNames() {
-    var subjTeacherNames = Object.keys(STATE.teacherSubjects);
-    var scheduleTeacherNames = STATE.teacherNames;
-    var onlyInSchedule = scheduleTeacherNames.filter(function (n) { return subjTeacherNames.indexOf(n) === -1; });
-    var onlyInSubjects = subjTeacherNames.filter(function (n) { return scheduleTeacherNames.indexOf(n) === -1; });
-    if (onlyInSchedule.length) console.warn('[검증] 전체 교사 시간표에만 있는 교사명:', onlyInSchedule);
-    if (onlyInSubjects.length) console.warn('[검증] 교사_담당교과에만 있는 교사명:', onlyInSubjects);
-  }
-
-  // ---------- init ----------
-  function init() {
-    fetch('data.xlsx')
-      .then(function (resp) {
-        if (!resp.ok) throw new Error('data.xlsx 파일을 불러올 수 없습니다 (HTTP ' + resp.status + ').');
-        return resp.arrayBuffer();
-      })
-      .then(function (buf) {
-        var wb = XLSX.read(buf, { type: 'array' });
-        function sheetRows(name) {
-          if (wb.Sheets[name] === undefined) throw new Error('필수 시트를 찾을 수 없습니다: ' + name);
-          return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null });
-        }
-
-        STATE.settings = parseSettings(sheetRows('설정'));
-        STATE.teacherSubjects = parseTeacherSubjects(sheetRows('교사_담당교과'));
-
-        var teacherParsed = parseMatrixSheet(sheetRows('전체 교사 시간표'));
-
-        STATE.dayList = teacherParsed.dayList || ['월', '화', '수', '목', '금'];
-        STATE.records = buildTeacherRecords(teacherParsed.blocks);
-        STATE.teacherScheduleMap = buildTeacherScheduleMap(STATE.records);
-        STATE.classScheduleMap = buildClassScheduleMap(STATE.records);
-        STATE.moveGroupIndex = buildMoveGroupIndex(STATE.records);
-        STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
-        STATE.weekSlots = allWeekSlots(STATE.dayList);
-
-        crossValidateTeacherNames();
-
-        renderTitle();
-        renderTeacherOptions();
-        renderGrid();
-      })
-      .catch(function (err) {
-        console.error(err);
-        showError('데이터를 불러오는 중 문제가 발생했습니다.\n' + err.message + '\n\ndata.xlsx 파일이 index.html과 같은 위치에 있는지 확인해주세요.');
-      });
-  }
-
-  function wireStaticUI() {
-    document.getElementById('previewCloseBtn').addEventListener('click', hidePreview);
-  }
-
-  document.addEventListener('DOMContentLoaded', function () {
-    wireStaticUI();
-    init();
+import { STATE } from './state.js';
+import {
+  parseMatrixSheet, buildTeacherRecords, parseTeacherSubjects, parseSettings,
+  buildTeacherScheduleMap, buildClassScheduleMap, buildMoveGroupIndex,
+  getRecord, allWeekSlots
+} from './data.js';
+import {
+  findNormalSwapCandidates, findMoveSwapCandidates, findMoveComboCandidates,
+  findSubjectSubstituteCandidates, findFallbackSubstituteCandidates
+} from './matching.js';
+import { renderBoardInto } from './board-render.js';
+import {
+  hidePreview, selectMoveSetSwap, selectMoveComboSwap, selectNormalSwap, selectSubstitute
+} from './preview.js';
+
+// ---------- render ----------
+function showError(msg) {
+  var el = document.getElementById('errorBanner');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function renderTitle() {
+  var s = STATE.settings;
+  var title = (s.year || '') + '학년도 ' + (s.semester || '') + ' ' + (s.schoolName || '') + ' 수업 시간표 교체';
+  document.title = title;
+  document.getElementById('pageTitle').textContent = title;
+  document.getElementById('pageSub').textContent = '칸을 눌러 맞교체·대강 후보를 찾아보세요.';
+}
+
+function renderTeacherOptions() {
+  var sel = document.getElementById('teacherSelect');
+  sel.innerHTML = '';
+  STATE.teacherNames.slice().sort(function (a, b) { return a.localeCompare(b, 'ko'); }).forEach(function (name) {
+    var opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    sel.appendChild(opt);
   });
-})();
+  sel.disabled = false;
+  sel.addEventListener('change', function () {
+    STATE.currentTeacher = sel.value;
+    renderGrid();
+    clearResults();
+  });
+  if (STATE.teacherNames.length) {
+    STATE.currentTeacher = sel.options[0].value;
+    sel.value = STATE.currentTeacher;
+  }
+}
+
+function renderGrid() {
+  var table = document.getElementById('boardTable');
+  renderBoardInto(table, STATE.dayList, function (day, period) {
+    return getRecord(STATE.teacherScheduleMap, STATE.currentTeacher, day, period);
+  }, { onCellClick: handleCellClick });
+  document.getElementById('appBody').style.display = 'block';
+}
+
+function clearResults() {
+  var panel = document.getElementById('sidePanel');
+  panel.innerHTML = '<div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>';
+  hidePreview();
+}
+
+var lastSelectedCell = null;
+
+function handleCellClick(rec, cellEl) {
+  if (lastSelectedCell) lastSelectedCell.classList.remove('cell-selected');
+  cellEl.classList.add('cell-selected');
+  lastSelectedCell = cellEl;
+  hidePreview(); // 새 셀을 클릭하면 이전 미리보기는 더 이상 유효하지 않으므로 접어둠
+
+  var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
+
+  var tier1, tier1NonEmpty;
+  if (ctx.moveGroupId) {
+    var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
+    var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap).setSwaps;
+    var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
+    tier1 = { setSwaps: setSwaps, combos: combos };
+    tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
+  } else {
+    tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
+    tier1NonEmpty = tier1.length > 0;
+  }
+  if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
+
+  var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, STATE.teacherScheduleMap, STATE.teacherNames);
+  if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
+
+  var tier3 = findFallbackSubstituteCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames);
+  renderResults(ctx, 3, tier3);
+}
+
+// 후보 한 줄(<li>)을 만든다. onSelect가 있으면 클릭 가능한 버튼으로, 없으면(이동수업처럼
+// 선택해서 미리보기를 만들 수 없는 경우) 그냥 텍스트로 렌더링.
+function makeCandListItem(whoText, whereText, onSelect) {
+  var li = document.createElement('li');
+  if (onSelect) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cand-btn';
+    var who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = whoText;
+    btn.appendChild(who);
+    if (whereText) {
+      var where = document.createElement('span');
+      where.className = 'where';
+      where.textContent = whereText;
+      btn.appendChild(where);
+    }
+    btn.addEventListener('click', function () {
+      var list = btn.closest('.cand-list');
+      if (list) {
+        var prev = list.querySelector('.is-selected');
+        if (prev) prev.classList.remove('is-selected');
+      }
+      btn.classList.add('is-selected');
+      onSelect();
+    });
+    li.appendChild(btn);
+  } else {
+    var whoSpan = document.createElement('span');
+    whoSpan.className = 'who';
+    whoSpan.textContent = whoText;
+    li.appendChild(whoSpan);
+    if (whereText) {
+      var whereSpan = document.createElement('span');
+      whereSpan.className = 'where';
+      whereSpan.textContent = whereText;
+      li.appendChild(whereSpan);
+    }
+  }
+  return li;
+}
+
+function appendTierBlock(container, tierClass, headingText, noteText, items) {
+  var tierDiv = document.createElement('div');
+  tierDiv.className = 'tier ' + tierClass;
+  var h3 = document.createElement('h3');
+  h3.textContent = headingText;
+  tierDiv.appendChild(h3);
+  if (noteText) {
+    var note = document.createElement('div');
+    note.className = 'note';
+    note.textContent = noteText;
+    tierDiv.appendChild(note);
+  }
+  if (items.length === 0) {
+    var empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = '가능한 교체·대강 후보가 없습니다.';
+    tierDiv.appendChild(empty);
+  } else {
+    var ul = document.createElement('ul');
+    ul.className = 'cand-list';
+    items.forEach(function (li) { ul.appendChild(li); });
+    tierDiv.appendChild(ul);
+  }
+  container.appendChild(tierDiv);
+}
+
+// combo.pairs(세트원 단위, 반이 같으면 같은 candidate가 여러 번 나타남)를 후보 목록 표시용으로
+// 다시 반(className) 단위로 묶는다 — 반 하나에 세트원이 여러 명이어도 대체 교사는 한 번만
+// 언급되도록.
+function groupComboPairsByClass(pairs) {
+  var order = [];
+  var byClass = {};
+  pairs.forEach(function (p) {
+    var cn = p.member.className;
+    if (!byClass[cn]) { byClass[cn] = { className: cn, members: [], candidate: p.candidate }; order.push(cn); }
+    byClass[cn].members.push(p.member);
+  });
+  return order.map(function (cn) { return byClass[cn]; });
+}
+
+// 오른쪽 후보 패널에 후보 목록을 그린다. 1순위(일반)·2·3순위 후보는 클릭하면 선택되어
+// 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다. 이동수업 세트(1순위, moveGroupId
+// 있는 경우)는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.
+function renderResults(ctx, tier, data) {
+  var body = document.getElementById('sidePanel');
+  body.innerHTML = '';
+
+  var titleDiv = document.createElement('div');
+  titleDiv.className = 'results-title';
+  titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시';
+  body.appendChild(titleDiv);
+
+  var metaDiv = document.createElement('div');
+  metaDiv.className = 'results-meta';
+  metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
+  body.appendChild(metaDiv);
+
+  if (tier === 1 && ctx.moveGroupId) {
+    var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
+    var items0 = [];
+    data.setSwaps.forEach(function (s) {
+      var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
+      items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
+        selectMoveSetSwap(ctx, groupA, s);
+      }));
+    });
+    data.combos.forEach(function (combo) {
+      var classText = groupComboPairsByClass(combo.pairs).map(function (g) {
+        var memberText = g.members.map(function (m) { return m.teacher + '(' + m.subject + ')'; }).join('+');
+        return g.className + '반 [' + memberText + '] ↔ ' + g.candidate.teacher + ' 교사';
+      }).join(' · ');
+      var whereText = combo.targetDay + '요일 ' + combo.targetPeriod + '교시로 이동 — ' + classText;
+      items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
+        selectMoveComboSwap(ctx, groupA, combo);
+      }));
+    });
+    appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
+  } else if (tier === 1) {
+    var items1 = data.map(function (c) {
+      return makeCandListItem(c.teacher + ' 교사', c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')', function () {
+        selectNormalSwap(ctx, c);
+      });
+    });
+    appendTierBlock(body, 'tier-1', '1순위: 맞교체 가능', null, items1);
+  } else if (tier === 2) {
+    var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
+    var items2 = data.map(function (c) {
+      return makeCandListItem(c.teacher + ' 교사', null, function () {
+        selectSubstitute(ctx, c.teacher);
+      });
+    });
+    appendTierBlock(body, 'tier-2', '2순위: 동교과 대강 후보', note2, items2);
+  } else if (tier === 3) {
+    var items3 = data.map(function (c) {
+      return makeCandListItem(c.teacher + ' 교사', null, function () {
+        selectSubstitute(ctx, c.teacher);
+      });
+    });
+    appendTierBlock(body, 'tier-3', '3순위: 전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
+  }
+}
+
+// ---------- cross validation ----------
+function crossValidateTeacherNames() {
+  var subjTeacherNames = Object.keys(STATE.teacherSubjects);
+  var scheduleTeacherNames = STATE.teacherNames;
+  var onlyInSchedule = scheduleTeacherNames.filter(function (n) { return subjTeacherNames.indexOf(n) === -1; });
+  var onlyInSubjects = subjTeacherNames.filter(function (n) { return scheduleTeacherNames.indexOf(n) === -1; });
+  if (onlyInSchedule.length) console.warn('[검증] 전체 교사 시간표에만 있는 교사명:', onlyInSchedule);
+  if (onlyInSubjects.length) console.warn('[검증] 교사_담당교과에만 있는 교사명:', onlyInSubjects);
+}
+
+// ---------- init ----------
+function init() {
+  fetch('data.xlsx')
+    .then(function (resp) {
+      if (!resp.ok) throw new Error('data.xlsx 파일을 불러올 수 없습니다 (HTTP ' + resp.status + ').');
+      return resp.arrayBuffer();
+    })
+    .then(function (buf) {
+      var wb = XLSX.read(buf, { type: 'array' });
+      function sheetRows(name) {
+        if (wb.Sheets[name] === undefined) throw new Error('필수 시트를 찾을 수 없습니다: ' + name);
+        return XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: null });
+      }
+
+      STATE.settings = parseSettings(sheetRows('설정'));
+      STATE.teacherSubjects = parseTeacherSubjects(sheetRows('교사_담당교과'));
+
+      var teacherParsed = parseMatrixSheet(sheetRows('전체 교사 시간표'));
+
+      STATE.dayList = teacherParsed.dayList || ['월', '화', '수', '목', '금'];
+      STATE.records = buildTeacherRecords(teacherParsed.blocks);
+      STATE.teacherScheduleMap = buildTeacherScheduleMap(STATE.records);
+      STATE.classScheduleMap = buildClassScheduleMap(STATE.records);
+      STATE.moveGroupIndex = buildMoveGroupIndex(STATE.records);
+      STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
+      STATE.weekSlots = allWeekSlots(STATE.dayList);
+
+      crossValidateTeacherNames();
+
+      renderTitle();
+      renderTeacherOptions();
+      renderGrid();
+    })
+    .catch(function (err) {
+      console.error(err);
+      showError('데이터를 불러오는 중 문제가 발생했습니다.\n' + err.message + '\n\ndata.xlsx 파일이 index.html과 같은 위치에 있는지 확인해주세요.');
+    });
+}
+
+function wireStaticUI() {
+  document.getElementById('previewCloseBtn').addEventListener('click', hidePreview);
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+  wireStaticUI();
+  init();
+});

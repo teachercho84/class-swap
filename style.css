@@ -266,6 +266,7 @@ select#teacherSelect:focus-visible {
 .auto-assign-label { font-weight: 500; flex: none; max-width: 45%; word-break: keep-all; }
 .auto-assign-outcome { color: var(--ink-soft); flex: 1 1 auto; min-width: 0; text-align: left; word-break: keep-all; }
 .auto-assign-outcome-empty { color: var(--danger); }
+#autoAssignBoards:not(:empty) { margin-top: 14px; }
 
 .manual-assign-results {
   display: flex;

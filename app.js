@@ -66,6 +66,8 @@ function clearResults() {
   // 교사 전환·결근 등록/삭제로 이전 배치 결과가 무효해질 수 있으므로 같이 비운다.
   var autoEl = document.getElementById('autoAssignResults');
   if (autoEl) autoEl.innerHTML = '';
+  var autoBoardsEl = document.getElementById('autoAssignBoards');
+  if (autoBoardsEl) autoBoardsEl.innerHTML = '';
   var manualEl = document.getElementById('manualAssignResults');
   if (manualEl) manualEl.innerHTML = '';
 }
@@ -237,6 +239,10 @@ function pickLeastLoaded(items, teacherMap, day, getTeacherName) {
 
 // 한 수업(ctx)의 대체를 찾아 사본(teacherMap/classMap)에 반영하고, 화면에 보여줄
 // 설명 문구를 돌려준다(후보가 전혀 없으면 null).
+// 반환값은 { text, diffs } — text는 목록에 보여줄 문구(후보 없으면 null), diffs는
+// "누구의 어느 칸이 어떻게 바뀌는지"(preview.js의 removals/additions/covered와 같은
+// 뜻의 added/removed/covered)를 담아, 배정이 다 끝난 뒤 관련 교사들의 전체 시간표를
+// 그려서 눈으로 확인할 수 있게 한다.
 function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
   if (!STATE.preferSubstitute) {
     if (ctx.moveGroupId) {
@@ -247,7 +253,13 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         // 없어 부담 비교 대상이 없다 — 그대로 첫 옵션을 쓴다.
         var s = setSwaps[0];
         applyRelocateToWorkingMaps(teacherMap, classMap, ctx, s.targetDay, s.targetPeriod);
-        return '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동';
+        return {
+          text: '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동',
+          diffs: [
+            { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'removed' },
+            { teacher: ctx.teacher, day: s.targetDay, period: s.targetPeriod, type: 'added' }
+          ]
+        };
       }
       var combos = findMoveComboCandidates(ctx, groupA, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
       var relevantCombos = combos.map(function (combo) {
@@ -261,7 +273,15 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
           { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: pair.member.subject, className: pair.member.className },
           { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, subject: pair.candidate.subject, className: pair.candidate.className }
         );
-        return pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + pair.candidate.day + '요일 ' + pair.candidate.period + '교시)';
+        return {
+          text: pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + pair.candidate.day + '요일 ' + pair.candidate.period + '교시)',
+          diffs: [
+            { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'removed' },
+            { teacher: ctx.teacher, day: pair.candidate.day, period: pair.candidate.period, type: 'added' },
+            { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, type: 'removed' },
+            { teacher: pair.candidate.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+          ]
+        };
       }
     } else {
       var normal = findNormalSwapCandidates(ctx, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
@@ -271,7 +291,15 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
           { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className },
           { teacher: c.teacher, day: c.day, period: c.period, subject: c.subject, className: c.className }
         );
-        return c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)';
+        return {
+          text: c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)',
+          diffs: [
+            { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'removed' },
+            { teacher: ctx.teacher, day: c.day, period: c.period, type: 'added' },
+            { teacher: c.teacher, day: c.day, period: c.period, type: 'removed' },
+            { teacher: c.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+          ]
+        };
       }
     }
   }
@@ -280,20 +308,56 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
   if (tier2.length > 0) {
     var pick2 = pickLeastLoaded(tier2, teacherMap, ctx.day, function (x) { return x.teacher; });
     applySubstituteToWorkingMaps(teacherMap, ctx, pick2.teacher);
-    return pick2.teacher + ' 교사 (대강)';
+    return {
+      text: pick2.teacher + ' 교사 (대강)',
+      diffs: [
+        { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'covered' },
+        { teacher: pick2.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+      ]
+    };
   }
   var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames);
   if (tier3.length > 0) {
     var pick3 = pickLeastLoaded(tier3, teacherMap, ctx.day, function (x) { return x.teacher; });
     applySubstituteToWorkingMaps(teacherMap, ctx, pick3.teacher);
-    return pick3.teacher + ' 교사 (대강, 참고용)';
+    return {
+      text: pick3.teacher + ' 교사 (대강, 참고용)',
+      diffs: [
+        { teacher: ctx.teacher, day: ctx.day, period: ctx.period, type: 'covered' },
+        { teacher: pick3.teacher, day: ctx.day, period: ctx.period, type: 'added' }
+      ]
+    };
   }
-  return null;
+  return { text: null, diffs: [] };
+}
+
+// diffsByTeacher의 { 'day_period': {type} } 하나를 교사 이름 + 최종 working-copy
+// teacherMap을 받아 .preview-col 모양(제목+미리보기 표)의 카드로 그린다 — preview.js의
+// 미리보기 카드와 같은 스타일을 그대로 재사용.
+function buildScheduleCard(title, teacher, teacherMap, dayDiff) {
+  var col = document.createElement('div');
+  col.className = 'preview-col';
+  var titleEl = document.createElement('div');
+  titleEl.className = 'preview-col-title';
+  titleEl.textContent = title;
+  var scroll = document.createElement('div');
+  scroll.className = 'board-scroll';
+  var table = document.createElement('table');
+  table.className = 'board mini-board';
+  scroll.appendChild(table);
+  col.appendChild(titleEl);
+  col.appendChild(scroll);
+  renderBoardInto(table, STATE.dayList, function (day, period) {
+    return getRecord(teacherMap, teacher, day, period);
+  }, { diffMap: dayDiff });
+  return col;
 }
 
 function runAutoAssign() {
   var listEl = document.getElementById('autoAssignResults');
+  var boardsEl = document.getElementById('autoAssignBoards');
   listEl.innerHTML = '';
+  boardsEl.innerHTML = '';
 
   var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
   if (affected.length === 0) {
@@ -307,9 +371,10 @@ function runAutoAssign() {
   var absences = currentAbsences();
   var teacherMap = cloneScheduleMap(STATE.teacherScheduleMap);
   var classMap = cloneScheduleMap(STATE.classScheduleMap);
+  var diffsByTeacher = {};
 
   affected.forEach(function (ctx) {
-    var outcomeText = resolveAutoAssignFor(ctx, absences, teacherMap, classMap);
+    var result = resolveAutoAssignFor(ctx, absences, teacherMap, classMap);
 
     var row = document.createElement('div');
     row.className = 'auto-assign-row';
@@ -318,10 +383,20 @@ function runAutoAssign() {
     label.textContent = ctx.day + '요일 ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '');
     row.appendChild(label);
     var outcome = document.createElement('div');
-    outcome.className = 'auto-assign-outcome' + (outcomeText ? '' : ' auto-assign-outcome-empty');
-    outcome.textContent = '→ ' + (outcomeText || '후보 없음');
+    outcome.className = 'auto-assign-outcome' + (result.text ? '' : ' auto-assign-outcome-empty');
+    outcome.textContent = '→ ' + (result.text || '후보 없음');
     row.appendChild(outcome);
     listEl.appendChild(row);
+
+    result.diffs.forEach(function (d) {
+      if (!diffsByTeacher[d.teacher]) diffsByTeacher[d.teacher] = {};
+      diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type };
+    });
+  });
+
+  Object.keys(diffsByTeacher).forEach(function (teacher) {
+    var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
+    boardsEl.appendChild(buildScheduleCard(title, teacher, teacherMap, diffsByTeacher[teacher]));
   });
 }
 

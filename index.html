@@ -20,6 +20,8 @@
     --accent-soft: #EEF0FF;
     --warm: #3B82F6;
     --warm-soft: #DCEAFE;
+    --added: #16A34A;
+    --added-soft: #DCFCE7;
     --free: #F3F4F6;
     --free-ink: #9CA3AF;
     --changche: #F3F4F6;
@@ -43,6 +45,8 @@
       --accent-soft: #23253A;
       --warm: #60A5FA;
       --warm-soft: #1C2E4A;
+      --added: #4ADE80;
+      --added-soft: #1C3829;
       --free: #1D2025;
       --free-ink: #7C828C;
       --changche: #1D2025;
@@ -66,6 +70,8 @@
     --accent-soft: #23253A;
     --warm: #60A5FA;
     --warm-soft: #1C2E4A;
+    --added: #4ADE80;
+    --added-soft: #1C3829;
     --free: #1D2025;
     --free-ink: #7C828C;
     --changche: #1D2025;
@@ -433,7 +439,7 @@
   table.mini-board .cell-btn { pointer-events: none; cursor: default; }
   table.mini-board .cell-btn:hover { background: transparent; }
 
-  .slot-added .cell-btn, .slot-added .cell-disabled { background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  .slot-added .cell-btn, .slot-added .cell-disabled { background: var(--added-soft); box-shadow: inset 0 0 0 1.5px var(--added); }
   .slot-covered .cell-btn, .slot-covered .cell-disabled {
     background: var(--warm-soft);
     box-shadow: inset 0 0 0 1.5px var(--warm);
@@ -1254,42 +1260,87 @@
     document.getElementById('previewSection').style.display = 'none';
   }
 
-  // 이동수업 세트는 특정 한 교사가 아니라 "여러 교사가 함께 쓰는 하나의 시간대"라, 개인
-  // 시간표 위에 표시할 수 없다. 그래서 세트원이 몇 명이든 상관없이 완전히 빈 주간 그리드에서
-  // 시작해서, 바뀌는 슬롯에만 세트 이름을 넣은 "가상 시간표" 한 장으로 보여준다.
-  function computeSetSchedule(changes) {
-    var removals = changes.removals || [];
-    var additions = changes.additions || [];
-    var grid = {};
-    STATE.dayList.forEach(function (day) { grid[day] = {}; });
-    var diff = {};
-    removals.forEach(function (r) {
-      grid[r.day][r.period] = { subject: r.label, className: null, isFree: false, isChangChe: false, moveGroupId: null };
-      diff[r.day + '_' + r.period] = { type: 'removed' };
-    });
-    additions.forEach(function (a) {
-      grid[a.day][a.period] = { subject: a.label, className: null, isFree: false, isChangChe: false, moveGroupId: null };
-      diff[a.day + '_' + a.period] = { type: 'added' };
-    });
-    return { grid: grid, diff: diff };
+  // previewComboRows 안의 "라벨 + 좌우 2단 미리보기" 한 줄을 만드는 공용 헬퍼. leftInfo/
+  // rightInfo는 null이거나 { teacherName, titleText, changes } — null이면 그 쪽 칸은 빈
+  // 채로 둔다(세트간 교체처럼 두 세트의 인원수가 달라 자연스러운 상대가 없는 경우용).
+  function buildComboPreviewRow(labelText, leftInfo, rightInfo) {
+    var row = document.createElement('div');
+
+    var label = document.createElement('div');
+    label.className = 'preview-combo-row-label';
+    label.textContent = labelText;
+    row.appendChild(label);
+
+    var cols = document.createElement('div');
+    cols.className = 'preview-cols';
+
+    function buildCol(info) {
+      var col = document.createElement('div');
+      col.className = 'preview-col';
+      var title = document.createElement('div');
+      title.className = 'preview-col-title';
+      var scroll = document.createElement('div');
+      scroll.className = 'board-scroll';
+      var table = document.createElement('table');
+      table.className = 'board mini-board';
+      scroll.appendChild(table);
+      col.appendChild(title);
+      col.appendChild(scroll);
+      if (info) {
+        var schedule = computeModifiedSchedule(info.teacherName, info.changes);
+        renderMiniBoardInto(table, title, info.titleText, schedule);
+      }
+      return col;
+    }
+
+    cols.appendChild(buildCol(leftInfo));
+    cols.appendChild(buildCol(rightInfo));
+    row.appendChild(cols);
+    return row;
   }
 
-  // 세트간 교체 선택: 세트 A는 자기 원래 시간을 비우고 세트 B의 원래 시간으로, 세트 B는 그
-  // 반대로 — 개인 맞교체와 원리는 같지만 "교사 1명" 대신 "세트 이름"을 라벨로 쓴다.
+  // 세트간 교체 선택: 세트 A 전체가 원래 시간을 비우고 세트 B의 원래 시간으로, 세트 B
+  // 전체가 그 반대로 이동한다 — 개별 조합 교체와 마찬가지로 실제 개인 교사 시간표를 그대로
+  // 보여준다. 다만 세트 A와 세트 B 사이엔 "누가 누구와 자리를 바꾸는지"에 대한 자연스러운
+  // 1:1 대응이 없으므로(둘 다 그냥 통째로 서로의 시간대로 이동할 뿐), members 배열의
+  // 순서대로 나란히 짝지어 보여준다 — 인원수가 다르면 짧은 쪽은 그 줄의 반대편 칸을 비운다.
   function selectMoveSetSwap(ctx, groupA, swap) {
-    var setAName = groupA.members.map(function (m) { return m.subject; }).join('/');
-    var setBName = swap.otherMembers.map(function (m) { return m.subject; }).join('/');
-    var leftSchedule = computeSetSchedule({
-      removals: [{ day: ctx.day, period: ctx.period, label: setAName }],
-      additions: [{ day: swap.targetDay, period: swap.targetPeriod, label: setAName }]
-    });
-    var rightSchedule = computeSetSchedule({
-      removals: [{ day: swap.targetDay, period: swap.targetPeriod, label: setBName }],
-      additions: [{ day: ctx.day, period: ctx.period, label: setBName }]
-    });
-    renderMiniBoard('previewLeftBoard', 'previewLeftTitle', '"' + setAName + '" 세트', leftSchedule);
-    renderMiniBoard('previewRightBoard', 'previewRightTitle', '"' + setBName + '" 세트', rightSchedule);
-    showStaticPreviewCols();
+    var container = document.getElementById('previewComboRows');
+    container.innerHTML = '';
+
+    var header = document.createElement('div');
+    header.className = 'preview-combo-row-label';
+    header.textContent = ctx.day + '요일 ' + ctx.period + '교시 세트 ↔ ' + swap.targetDay + '요일 ' + swap.targetPeriod + '교시 세트 (세트간 교체)';
+    container.appendChild(header);
+
+    var membersA = groupA.members;
+    var membersB = swap.otherMembers;
+    var maxLen = Math.max(membersA.length, membersB.length);
+    for (var i = 0; i < maxLen; i++) {
+      var mA = membersA[i] || null;
+      var mB = membersB[i] || null;
+      var leftInfo = mA ? {
+        teacherName: mA.teacher,
+        titleText: mA.teacher + ' 교사 — 요청',
+        changes: {
+          removals: [{ day: ctx.day, period: ctx.period }],
+          additions: [{ day: swap.targetDay, period: swap.targetPeriod, subject: mA.subject, className: mA.className }]
+        }
+      } : null;
+      var rightInfo = mB ? {
+        teacherName: mB.teacher,
+        titleText: mB.teacher + ' 교사 — 상대',
+        changes: {
+          removals: [{ day: swap.targetDay, period: swap.targetPeriod }],
+          additions: [{ day: ctx.day, period: ctx.period, subject: mB.subject, className: mB.className }]
+        }
+      } : null;
+      var label = (mA ? mA.teacher : '') + ' ↔ ' + (mB ? mB.teacher : '');
+      container.appendChild(buildComboPreviewRow(label, leftInfo, rightInfo));
+    }
+
+    document.getElementById('previewStaticCols').style.display = 'none';
+    container.style.display = '';
     document.getElementById('previewSection').style.display = 'block';
   }
 
@@ -1306,50 +1357,23 @@
     container.appendChild(header);
 
     combo.pairs.forEach(function (p) {
-      var row = document.createElement('div');
-
-      var label = document.createElement('div');
-      label.className = 'preview-combo-row-label';
-      label.textContent = p.member.teacher + ' ↔ ' + p.candidate.teacher;
-      row.appendChild(label);
-
-      var cols = document.createElement('div');
-      cols.className = 'preview-cols';
-
-      function buildCol() {
-        var col = document.createElement('div');
-        col.className = 'preview-col';
-        var title = document.createElement('div');
-        title.className = 'preview-col-title';
-        var scroll = document.createElement('div');
-        scroll.className = 'board-scroll';
-        var table = document.createElement('table');
-        table.className = 'board mini-board';
-        scroll.appendChild(table);
-        col.appendChild(title);
-        col.appendChild(scroll);
-        return { col: col, title: title, table: table };
-      }
-
-      var left = buildCol();
-      var right = buildCol();
-      cols.appendChild(left.col);
-      cols.appendChild(right.col);
-      row.appendChild(cols);
-      container.appendChild(row);
-
-      var leftChanges = {
-        removals: [{ day: ctx.day, period: ctx.period }],
-        additions: [{ day: p.candidate.day, period: p.candidate.period, subject: p.member.subject, className: p.member.className }]
+      var leftInfo = {
+        teacherName: p.member.teacher,
+        titleText: p.member.teacher + ' 교사 — 요청',
+        changes: {
+          removals: [{ day: ctx.day, period: ctx.period }],
+          additions: [{ day: p.candidate.day, period: p.candidate.period, subject: p.member.subject, className: p.member.className }]
+        }
       };
-      var rightChanges = {
-        removals: [{ day: p.candidate.day, period: p.candidate.period }],
-        additions: [{ day: ctx.day, period: ctx.period, subject: p.candidate.subject, className: p.candidate.className }]
+      var rightInfo = {
+        teacherName: p.candidate.teacher,
+        titleText: p.candidate.teacher + ' 교사 — 상대',
+        changes: {
+          removals: [{ day: p.candidate.day, period: p.candidate.period }],
+          additions: [{ day: ctx.day, period: ctx.period, subject: p.candidate.subject, className: p.candidate.className }]
+        }
       };
-      var leftSchedule = computeModifiedSchedule(p.member.teacher, leftChanges);
-      var rightSchedule = computeModifiedSchedule(p.candidate.teacher, rightChanges);
-      renderMiniBoardInto(left.table, left.title, p.member.teacher + ' 교사 — 요청', leftSchedule);
-      renderMiniBoardInto(right.table, right.title, p.candidate.teacher + ' 교사 — 상대', rightSchedule);
+      container.appendChild(buildComboPreviewRow(p.member.teacher + ' ↔ ' + p.candidate.teacher, leftInfo, rightInfo));
     });
 
     document.getElementById('previewStaticCols').style.display = 'none';

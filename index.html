@@ -268,18 +268,20 @@
   .cell-disabled.changche { background: var(--changche); color: var(--changche-ink); }
 
   .cell-move { background: var(--warm-soft); }
+  /* 이동수업 표시(⇄)는 메인 그리드·미리보기 어디서나 같은 방식(우상단 고정 배지)으로 통일 —
+     크기만 각 보드에 맞게 다르다(메인은 원래 크기 0.7rem 그대로, 미리보기는 더 작게). */
+  .cell-move .cell-btn { position: relative; }
   .cell-move .cell-btn::before {
     content: "\21C4";
+    position: absolute;
+    top: 3px;
+    right: 4px;
     font-size: 0.7rem;
     color: var(--warm);
     font-weight: 700;
   }
   .cell-move .cell-btn:hover { background: rgba(0,0,0,.04); }
-  /* 메인 그리드는 화살표를 글자 위에 쌓아도 자리가 넉넉해서 그대로 두고, 셀이 훨씬 작아지는
-     미리보기 보드에서만 흐름 밖으로 빼서 우상단 배지로 — 안 그러면 텍스트와 겹친다. */
-  table.mini-board .cell-move .cell-btn { position: relative; }
   table.mini-board .cell-move .cell-btn::before {
-    position: absolute;
     top: 1px;
     right: 2px;
     font-size: 0.85em;
@@ -723,19 +725,14 @@
     return false;
   }
 
-  function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap, weekSlots, validSlotSet) {
+  // 이동수업 세트는 "다른 세트와 맞바꾸는 것"만 후보로 삼는다. 예전엔 상대 없이 그냥 빈
+  // 시간대로 옮기는 방식(빈 시간대 이동)도 있었는데, 그러면 세트가 떠난 원래 시간대를
+  // 아무것도 대신 채우지 않아서 그 이동수업을 듣던 학생들은 원래 시간에 수업이 통째로
+  // 비어버린다 — 실제로 쓸 수 없는 결과라 완전히 제거했다. 세트간 교체는 두 세트가 서로의
+  // 시간을 정확히 맞바꾸므로 그 시간에 항상 뭔가 수업이 있어 이런 문제가 없다.
+  function findMoveSwapCandidates(ctx, moveGroupIndex, teacherScheduleMap, classScheduleMap) {
     var groupA = moveGroupIndex[ctx.moveGroupId];
     var origDay = ctx.day, origPeriod = ctx.period;
-    var emptySlotMoves = [];
-    weekSlots.forEach(function (slot) {
-      if (slot.day === origDay && slot.period === origPeriod) return;
-      // 학교 전체에 실제 수업이 하나도 없는 시간대(예: 전원 공강/창체이거나 애초에 없는 교시)는
-      // 이동할 수 있는 진짜 수업 시간이 아니므로 후보에서 제외.
-      if (!validSlotSet.has(slot.day + '_' + slot.period)) return;
-      if (allMembersFreeAt(groupA.members, slot.day, slot.period, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) {
-        emptySlotMoves.push({ type: 'emptySlotMove', day: slot.day, period: slot.period });
-      }
-    });
     var setSwaps = [];
     Object.keys(moveGroupIndex).forEach(function (gid) {
       if (gid === ctx.moveGroupId) return;
@@ -746,20 +743,7 @@
       if (!allMembersFreeAt(groupB.members, origDay, origPeriod, teacherScheduleMap, classScheduleMap, ctx.moveGroupId)) return;
       setSwaps.push({ type: 'setSwap', otherGroupId: gid, otherMembers: groupB.members, targetDay: groupB.day, targetPeriod: groupB.period });
     });
-    return { emptySlotMoves: emptySlotMoves, setSwaps: setSwaps };
-  }
-
-  // (요일,교시) 중 학교 전체에서 실제 수업(공강·창체가 아닌 진짜 과목)이 하나라도 있는
-  // 시간대만 모음 — 이동수업을 옮길 수 있는 "진짜 수업 시간대" 판정에 사용.
-  function buildValidSlotSet(records) {
-    var set = {};
-    records.forEach(function (rec) {
-      if (rec.isFree || rec.isChangChe) return;
-      set[rec.day + '_' + rec.period] = true;
-    });
-    return {
-      has: function (key) { return !!set[key]; }
-    };
+    return { setSwaps: setSwaps };
   }
 
   function findSubjectSubstituteCandidates(ctx, teacherSubjects, teacherScheduleMap, teacherNames) {
@@ -792,7 +776,7 @@
   // ---------- app state ----------
   var STATE = {
     records: [], dayList: [], teacherScheduleMap: {}, classScheduleMap: {},
-    moveGroupIndex: {}, teacherSubjects: {}, teacherNames: [], weekSlots: [], validSlotSet: null,
+    moveGroupIndex: {}, teacherSubjects: {}, teacherNames: [], weekSlots: [],
     currentTeacher: null, settings: {}
   };
 
@@ -950,8 +934,8 @@
 
     var tier1, tier1NonEmpty;
     if (ctx.moveGroupId) {
-      tier1 = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, STATE.weekSlots, STATE.validSlotSet);
-      tier1NonEmpty = (tier1.emptySlotMoves.length + tier1.setSwaps.length) > 0;
+      tier1 = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap);
+      tier1NonEmpty = tier1.setSwaps.length > 0;
     } else {
       tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
       tier1NonEmpty = tier1.length > 0;
@@ -1052,13 +1036,13 @@
     body.appendChild(metaDiv);
 
     if (tier === 1 && ctx.moveGroupId) {
+      var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
       var items0 = [];
-      data.emptySlotMoves.forEach(function (m) {
-        items0.push(makeCandListItem('빈 시간대 이동', m.day + '요일 ' + m.period + '교시 (세트 전원 비어있음)', null));
-      });
       data.setSwaps.forEach(function (s) {
         var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
-        items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', null));
+        items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
+          selectMoveSetSwap(ctx, groupA, s);
+        }));
       });
       appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
     } else if (tier === 1) {
@@ -1141,6 +1125,44 @@
     document.getElementById('previewSection').style.display = 'none';
   }
 
+  // 이동수업 세트는 특정 한 교사가 아니라 "여러 교사가 함께 쓰는 하나의 시간대"라, 개인
+  // 시간표 위에 표시할 수 없다. 그래서 세트원이 몇 명이든 상관없이 완전히 빈 주간 그리드에서
+  // 시작해서, 바뀌는 슬롯에만 세트 이름을 넣은 "가상 시간표" 한 장으로 보여준다.
+  function computeSetSchedule(changes) {
+    var removals = changes.removals || [];
+    var additions = changes.additions || [];
+    var grid = {};
+    STATE.dayList.forEach(function (day) { grid[day] = {}; });
+    var diff = {};
+    removals.forEach(function (r) {
+      grid[r.day][r.period] = { subject: r.label, className: null, isFree: false, isChangChe: false, moveGroupId: null };
+      diff[r.day + '_' + r.period] = { type: 'removed' };
+    });
+    additions.forEach(function (a) {
+      grid[a.day][a.period] = { subject: a.label, className: null, isFree: false, isChangChe: false, moveGroupId: null };
+      diff[a.day + '_' + a.period] = { type: 'added' };
+    });
+    return { grid: grid, diff: diff };
+  }
+
+  // 세트간 교체 선택: 세트 A는 자기 원래 시간을 비우고 세트 B의 원래 시간으로, 세트 B는 그
+  // 반대로 — 개인 맞교체와 원리는 같지만 "교사 1명" 대신 "세트 이름"을 라벨로 쓴다.
+  function selectMoveSetSwap(ctx, groupA, swap) {
+    var setAName = groupA.members.map(function (m) { return m.subject; }).join('/');
+    var setBName = swap.otherMembers.map(function (m) { return m.subject; }).join('/');
+    var leftSchedule = computeSetSchedule({
+      removals: [{ day: ctx.day, period: ctx.period, label: setAName }],
+      additions: [{ day: swap.targetDay, period: swap.targetPeriod, label: setAName }]
+    });
+    var rightSchedule = computeSetSchedule({
+      removals: [{ day: swap.targetDay, period: swap.targetPeriod, label: setBName }],
+      additions: [{ day: ctx.day, period: ctx.period, label: setBName }]
+    });
+    renderMiniBoard('previewLeftBoard', 'previewLeftTitle', '"' + setAName + '" 세트', leftSchedule);
+    renderMiniBoard('previewRightBoard', 'previewRightTitle', '"' + setBName + '" 세트', rightSchedule);
+    document.getElementById('previewSection').style.display = 'block';
+  }
+
   // 1순위 맞교체 선택: 두 사람의 세션이 통째로 자리를 바꾼다 — 왼쪽(요청자)은 원래 칸이
   // 비고 상대의 원래 칸에 자기 과목이 들어가며, 오른쪽(상대)은 그 반대.
   function selectNormalSwap(ctx, candidate) {
@@ -1201,7 +1223,6 @@
         STATE.teacherScheduleMap = buildTeacherScheduleMap(STATE.records);
         STATE.classScheduleMap = buildClassScheduleMap(STATE.records);
         STATE.moveGroupIndex = buildMoveGroupIndex(STATE.records);
-        STATE.validSlotSet = buildValidSlotSet(STATE.records);
         STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
         STATE.weekSlots = allWeekSlots(STATE.dayList);
 

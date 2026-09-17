@@ -265,21 +265,22 @@
   .cell-disabled.changche { background: var(--changche); color: var(--changche-ink); }
 
   .cell-move { background: var(--warm-soft); }
-  .cell-move .cell-btn { position: relative; }
-  /* 화살표를 flex 흐름 안에 넣고 세로로 쌓으면(subj/cls와 나란히) 셀이 작아지는 미리보기
-     보드에서 위로 밀려 텍스트와 겹친다 — 흐름 밖으로 빼서 우상단에 고정된 배지로 표시하면
-     셀 크기와 무관하게 항상 같은 자리에 예쁘게 붙는다. */
   .cell-move .cell-btn::before {
     content: "\21C4";
-    position: absolute;
-    top: 3px;
-    right: 4px;
-    font-size: 0.65em;
-    line-height: 1;
+    font-size: 0.7rem;
     color: var(--warm);
     font-weight: 700;
   }
   .cell-move .cell-btn:hover { background: rgba(0,0,0,.04); }
+  /* 메인 그리드는 화살표를 글자 위에 쌓아도 자리가 넉넉해서 그대로 두고, 셀이 훨씬 작아지는
+     미리보기 보드에서만 흐름 밖으로 빼서 우상단 배지로 — 안 그러면 텍스트와 겹친다. */
+  table.mini-board .cell-move .cell-btn { position: relative; }
+  table.mini-board .cell-move .cell-btn::before {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 0.85em;
+  }
 
   .cell-selected { box-shadow: inset 0 0 0 2px var(--accent); }
 

@@ -515,13 +515,15 @@
   function parseMatrixSheet(rows2D) {
     var dayRow = rows2D[2] || [];
     var periodRow = rows2D[3] || [];
+    // 요일 헤더 행엔 월~금 뒤에 시수/교사/담임/비고 같은 요약 열 이름도 같은 줄에 이어져
+    // 있다. 그 요약 열들은 교시번호(4행)가 비어있다는 게 유일한 구분점이라, dayList는
+    // "교시번호가 실제로 파싱된 열"에서만 뽑아야 한다 — 그냥 텍스트가 있다고 다 요일로
+    // 넣으면 시수/교사/담임/비고가 가짜 요일 열로 그리드에 붙어버린다.
     var cols = [];
     var currentDay = null;
-    var dayList = [];
     for (var c = 2; c < dayRow.length; c++) {
       if (dayRow[c] != null && String(dayRow[c]).trim() !== '') {
         currentDay = String(dayRow[c]).trim();
-        if (dayList.indexOf(currentDay) === -1) dayList.push(currentDay);
       }
       var p = periodRow[c];
       if (p == null || p === '') continue;
@@ -530,6 +532,10 @@
       cols.push({ col: c, day: currentDay, period: period });
     }
     if (!cols.length) throw new Error('전체 교사 시간표에서 요일/교시 헤더를 찾을 수 없습니다.');
+    var dayList = [];
+    cols.forEach(function (cd) {
+      if (dayList.indexOf(cd.day) === -1) dayList.push(cd.day);
+    });
 
     var blocks = [];
     var r = 4;

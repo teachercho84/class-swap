@@ -167,8 +167,6 @@
   .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; border: 1px solid var(--line); }
   .swatch.normal { background: var(--paper); }
   .swatch.move { background: var(--warm-soft); border-color: var(--warm); }
-  .swatch.free { background: var(--free); }
-  .swatch.changche { background: var(--changche); border-color: var(--changche-ink); }
 
   /* ---- 상단 영역: 왼쪽 60% 시간표 / 오른쪽 40% 후보 패널 ---- */
   .main-row {
@@ -223,10 +221,10 @@
     font-weight: 500;
     color: var(--ink-soft);
     background: var(--header-bg);
-    width: 48px;
+    width: 68px;
     white-space: nowrap;
   }
-  table.board td.slot { height: 62px; width: 19%; vertical-align: middle; position: relative; }
+  table.board td.slot { height: 62px; vertical-align: middle; position: relative; }
 
   .cell-btn {
     all: unset;
@@ -415,7 +413,7 @@
   table.mini-board { min-width: 0; font-size: 0.7em; }
   table.mini-board td.slot { height: 40px; }
   table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 40px; height: 40px; font-size: 0.82em; }
-  table.mini-board td.period-cell { width: 30px; }
+  table.mini-board td.period-cell { width: 44px; }
   table.mini-board .cell-btn { pointer-events: none; cursor: default; }
   table.mini-board .cell-btn:hover { background: transparent; }
 
@@ -451,8 +449,6 @@
     <div class="legend">
       <span><i class="swatch normal"></i>일반 수업</span>
       <span><i class="swatch move"></i>이동수업</span>
-      <span><i class="swatch free"></i>공강</span>
-      <span><i class="swatch changche"></i>창체</span>
     </div>
 
     <div class="main-row">

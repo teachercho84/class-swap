@@ -242,7 +242,8 @@ select#teacherSelect:focus-visible {
 .main-row {
   display: flex;
   gap: 24px;
-  align-items: flex-start;
+  align-items: stretch; /* 오른쪽 후보 패널을 왼쪽 시간표와 같은 높이로 맞춘다 —
+                            넘치는 후보 목록은 그 안에서만 스크롤된다. */
 }
 .board-col { flex: 0 0 60%; max-width: 60%; min-width: 0; }
 .side-col { flex: 0 0 40%; max-width: 40%; min-width: 0; }
@@ -369,7 +370,10 @@ table.mini-board .cell-move .cell-btn::before {
   color: var(--ink-soft);
   margin-bottom: 18px;
 }
-.tier { margin-bottom: 20px; }
+/* .tier가 side-panel(플렉스 세로축) 안에서 남는 공간을 전부 차지하고, 그 안의
+   .cand-list가 다시 남는 공간을 차지해 내부 스크롤된다 — 그래서 후보가 몇 개든
+   패널 전체 높이는 항상 왼쪽 시간표와 같다(.main-row의 align-items: stretch). */
+.tier { margin-bottom: 20px; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 .tier h3 {
   font-size: 0.85rem;
   font-weight: 600;
@@ -377,16 +381,16 @@ table.mini-board .cell-move .cell-btn::before {
   color: var(--ink-soft);
   text-transform: uppercase;
   letter-spacing: .04em;
+  flex: none;
 }
 .tier.tier-1 h3 { color: var(--accent); }
 .tier .note {
   font-size: 0.85rem;
   color: var(--ink-soft);
   margin-bottom: 10px;
+  flex: none;
 }
-/* 후보가 아주 많을 때 오른쪽 패널이 시간표보다 훨씬 아래까지 늘어나는 걸 막기 위해
-   목록 자체를 내부 스크롤시킨다 — 패널 높이는 시간표와 비슷한 수준에서 멈춘다. */
-.cand-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; }
+.cand-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; flex: 1 1 auto; min-height: 0; overflow-y: auto; }
 .cand-list li {
   font-size: 0.95rem;
   display: flex;
@@ -432,6 +436,9 @@ table.mini-board .cell-move .cell-btn::before {
   box-shadow: var(--shadow);
   padding: 20px 18px;
   min-height: 120px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   font-size: 0.95rem;
 }
 .side-panel .placeholder { color: var(--ink-soft); font-size: 0.95rem; }

@@ -192,7 +192,7 @@ function handleCellClick(rec, cellEl) {
 
   var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
 
-  // 맞교체·이동수업(위 70%)과 대강(아래 30%) 두 패널을 항상 같이 계산한다 — 예전처럼
+  // 맞교체·이동수업(위 60%)과 대강(아래 40%) 두 패널을 항상 같이 계산한다 — 예전처럼
   // 한쪽에 후보가 있으면 다른 쪽을 안 보여주는 폴백은 하지 않는다. 2·3순위끼리의
   // 폴백(2순위 없으면 3순위)만 그대로 유지한다.
   var absences = currentAbsences();
@@ -297,7 +297,7 @@ function groupComboPairsByClass(pairs) {
   return order.map(function (cn) { return byClass[cn]; });
 }
 
-// 오른쪽 영역에 "맞교체·이동수업"(위 70%)과 "대강"(아래 30%) 두 카드를 항상 같이
+// 오른쪽 영역에 "맞교체·이동수업"(위 60%)과 "대강"(아래 40%) 두 카드를 항상 같이
 // 그린다 — 한쪽에 후보가 있어도 다른 쪽을 가리지 않는다(각자 없으면 그 카드에만
 // "후보 없음"). 후보를 클릭하면 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다.
 // 이동수업 세트는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.

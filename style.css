@@ -141,14 +141,27 @@ select#teacherSelect:focus-visible {
   white-space: pre-line;
 }
 
-/* ---- 출장·결근 관리: 범례 위, 가로로 넓은 바(bar) 형태 ---- */
+/* ---- 상단 영역: 왼쪽 60% 출장·결근 관리 / 오른쪽 40% 표시 옵션 —
+   .main-row(시간표/후보 패널)와 같은 60:40 비율을 그대로 맞춘다. */
+.top-row {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+@media (max-width: 760px) {
+  .top-row { flex-direction: column; }
+  .absence-panel, .options-panel { max-width: 100%; width: 100%; }
+}
+
 .absence-panel {
   background: var(--paper);
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
   padding: 14px 16px;
-  margin-bottom: 24px;
+  flex: 0 0 60%;
+  max-width: 60%;
+  min-width: 0;
 }
 .absence-panel-head {
   display: flex;
@@ -213,6 +226,32 @@ select#teacherSelect:focus-visible {
   border-radius: 999px;
 }
 .absence-tag button { all: unset; box-sizing: border-box; cursor: pointer; font-weight: 700; line-height: 1; }
+
+.options-panel {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 14px 16px;
+  flex: 0 0 40%;
+  max-width: 40%;
+  min-width: 0;
+}
+.options-panel-title {
+  display: block;
+  font-size: 0.92rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.option-checkbox {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.option-checkbox input { margin-top: 3px; flex: none; }
 
 .legend {
   display: flex;

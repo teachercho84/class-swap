@@ -24,26 +24,36 @@
   <div id="errorBanner"></div>
 
   <div id="appBody" style="display:none;">
-    <div id="absencePanel" class="absence-panel">
-      <div class="absence-panel-head">
-        <span class="absence-panel-title">출장·결근 관리</span>
-        <div class="absence-panel-controls">
-          <select id="absenceDaySelect"></select>
-          <span class="absence-period-checks" id="absencePeriodChecks">
-            <label><input type="checkbox" id="absencePeriodAll"> 전체</label>
-            <label><input type="checkbox" value="1"> 1</label>
-            <label><input type="checkbox" value="2"> 2</label>
-            <label><input type="checkbox" value="3"> 3</label>
-            <label><input type="checkbox" value="4"> 4</label>
-            <label><input type="checkbox" value="5"> 5</label>
-            <label><input type="checkbox" value="6"> 6</label>
-            <label><input type="checkbox" value="7"> 7</label>
-          </span>
-          <button type="button" id="absenceAddBtn">추가</button>
-          <button type="button" id="absenceSaveBtn">저장하기</button>
+    <div class="top-row">
+      <div id="absencePanel" class="absence-panel">
+        <div class="absence-panel-head">
+          <span class="absence-panel-title">출장·결근 관리</span>
+          <div class="absence-panel-controls">
+            <select id="absenceDaySelect"></select>
+            <span class="absence-period-checks" id="absencePeriodChecks">
+              <label><input type="checkbox" id="absencePeriodAll"> 전체</label>
+              <label><input type="checkbox" value="1"> 1</label>
+              <label><input type="checkbox" value="2"> 2</label>
+              <label><input type="checkbox" value="3"> 3</label>
+              <label><input type="checkbox" value="4"> 4</label>
+              <label><input type="checkbox" value="5"> 5</label>
+              <label><input type="checkbox" value="6"> 6</label>
+              <label><input type="checkbox" value="7"> 7</label>
+            </span>
+            <button type="button" id="absenceAddBtn">추가</button>
+            <button type="button" id="absenceSaveBtn">저장하기</button>
+          </div>
         </div>
+        <div id="absenceTagList" class="absence-tag-list"></div>
       </div>
-      <div id="absenceTagList" class="absence-tag-list"></div>
+
+      <div id="optionsPanel" class="options-panel">
+        <span class="options-panel-title">표시 옵션</span>
+        <label class="option-checkbox">
+          <input type="checkbox" id="preferSubstituteCheckbox">
+          대강 우선 — 체크하면 맞교체·이동수업(1순위) 대신 대강(2·3순위) 후보를 먼저 보여줍니다
+        </label>
+      </div>
     </div>
 
     <div class="legend">

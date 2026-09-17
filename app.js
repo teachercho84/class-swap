@@ -182,6 +182,14 @@ function wireAbsencePanel() {
   });
 }
 
+// ---------- 표시 옵션: 대강 우선 ----------
+function wireOptionsPanel() {
+  document.getElementById('preferSubstituteCheckbox').addEventListener('change', function (e) {
+    STATE.preferSubstitute = e.target.checked;
+    clearResults(); // 이미 열려있는 결과는 새 우선순위 기준으로 다시 클릭해야 하므로 접어둠
+  });
+}
+
 var lastSelectedCell = null;
 
 function handleCellClick(rec, cellEl) {
@@ -192,19 +200,23 @@ function handleCellClick(rec, cellEl) {
 
   var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
 
-  var absences = currentAbsences();
-  var tier1, tier1NonEmpty;
-  if (ctx.moveGroupId) {
-    var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
-    var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, absences).setSwaps;
-    var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
-    tier1 = { setSwaps: setSwaps, combos: combos };
-    tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
-  } else {
-    tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
-    tier1NonEmpty = tier1.length > 0;
+  // "대강 우선"이 켜져 있으면 1순위(맞교체·이동수업) 계산·표시를 아예 건너뛰고
+  // 곧장 2·3순위 폴백으로 간다.
+  if (!STATE.preferSubstitute) {
+    var absences = currentAbsences();
+    var tier1, tier1NonEmpty;
+    if (ctx.moveGroupId) {
+      var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
+      var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, absences).setSwaps;
+      var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
+      tier1 = { setSwaps: setSwaps, combos: combos };
+      tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
+    } else {
+      tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
+      tier1NonEmpty = tier1.length > 0;
+    }
+    if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
   }
-  if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
 
   var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, STATE.teacherScheduleMap, STATE.teacherNames);
   if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
@@ -412,6 +424,7 @@ function init() {
 function wireStaticUI() {
   document.getElementById('previewCloseBtn').addEventListener('click', hidePreview);
   wireAbsencePanel();
+  wireOptionsPanel();
 }
 
 document.addEventListener('DOMContentLoaded', function () {

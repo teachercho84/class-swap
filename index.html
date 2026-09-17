@@ -417,6 +417,13 @@
     font-weight: 600;
     margin-bottom: 10px;
   }
+  .preview-combo-rows { display: flex; flex-direction: column; gap: 28px; }
+  .preview-combo-row-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-bottom: 10px;
+  }
   table.mini-board { min-width: 0; font-size: 0.7em; }
   table.mini-board td.slot { height: 40px; }
   table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 40px; height: 40px; font-size: 0.82em; }
@@ -477,7 +484,7 @@
         <h2>변경 후 시간표 미리보기</h2>
         <button type="button" class="preview-close" id="previewCloseBtn" aria-label="미리보기 닫기">&times;</button>
       </div>
-      <div class="preview-cols">
+      <div class="preview-cols" id="previewStaticCols">
         <div class="preview-col">
           <div class="preview-col-title" id="previewLeftTitle"></div>
           <div class="board-scroll"><table class="board mini-board" id="previewLeftBoard"></table></div>
@@ -487,6 +494,7 @@
           <div class="board-scroll"><table class="board mini-board" id="previewRightBoard"></table></div>
         </div>
       </div>
+      <div id="previewComboRows" class="preview-combo-rows" style="display:none;"></div>
     </section>
   </div>
 </div>
@@ -745,6 +753,30 @@
     return { setSwaps: setSwaps };
   }
 
+  // 세트간 교체(상대도 등록된 이동수업 세트여야 함)와 달리, 세트원 각자가 개별적으로
+  // "원래 그 반을 담당하는 다른 교사"와 6.2와 똑같은 원리로 맞교체하는 조합도 유효한 해법이다
+  // — 세트원 전원이 각자 개별 상대를 찾아야만(전원 매칭) 그 시간에 학생 수업이 반쪽만 채워지는
+  // 일이 없으므로 유효한 조합이 된다. findNormalSwapCandidates를 그대로 재사용하되, 세트원을
+  // "그 시간에 그 반 수업을 하는 개인 교사"인 것처럼 ctx를 구성해서 넘긴다.
+  function findMoveComboCandidates(ctx, groupA, teacherScheduleMap, teacherNames, weekSlots) {
+    var perMember = groupA.members.map(function (m) {
+      var memberCtx = { teacher: m.teacher, day: ctx.day, period: ctx.period, className: m.className };
+      return findNormalSwapCandidates(memberCtx, teacherScheduleMap, teacherNames, weekSlots);
+    });
+    if (perMember.some(function (list) { return list.length === 0; })) return [];
+    var combos = [];
+    (function build(idx, acc, used) {
+      if (idx === groupA.members.length) { combos.push({ pairs: acc.slice() }); return; }
+      perMember[idx].forEach(function (cand) {
+        if (used.indexOf(cand.teacher) !== -1) return;
+        acc.push({ member: groupA.members[idx], candidate: cand });
+        build(idx + 1, acc, used.concat(cand.teacher));
+        acc.pop();
+      });
+    })(0, [], []);
+    return combos;
+  }
+
   function findSubjectSubstituteCandidates(ctx, teacherSubjects, teacherScheduleMap, teacherNames) {
     var isCareer = ctx.subject.trim() === '진로';
     var mySubject = teacherSubjects[ctx.teacher] ? teacherSubjects[ctx.teacher].subject : null;
@@ -927,8 +959,11 @@
 
     var tier1, tier1NonEmpty;
     if (ctx.moveGroupId) {
-      tier1 = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap);
-      tier1NonEmpty = tier1.setSwaps.length > 0;
+      var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
+      var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap).setSwaps;
+      var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
+      tier1 = { setSwaps: setSwaps, combos: combos };
+      tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
     } else {
       tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots);
       tier1NonEmpty = tier1.length > 0;
@@ -1037,6 +1072,14 @@
           selectMoveSetSwap(ctx, groupA, s);
         }));
       });
+      data.combos.forEach(function (combo) {
+        var whereText = combo.pairs.map(function (p) {
+          return p.member.teacher + '↔' + p.candidate.teacher + ' (' + p.candidate.day + p.candidate.period + '교시, ' + p.candidate.className + '반 ' + p.candidate.subject + ')';
+        }).join(' · ');
+        items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
+          selectMoveComboSwap(ctx, groupA, combo);
+        }));
+      });
       appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
     } else if (tier === 1) {
       var items1 = data.map(function (c) {
@@ -1098,12 +1141,22 @@
     return { grid: grid, diff: diff };
   }
 
-  function renderMiniBoard(tableId, titleId, titleText, schedule) {
-    document.getElementById(titleId).textContent = titleText;
-    var table = document.getElementById(tableId);
-    renderBoardInto(table, STATE.dayList, function (day, period) {
+  function renderMiniBoardInto(tableEl, titleEl, titleText, schedule) {
+    if (titleEl) titleEl.textContent = titleText;
+    renderBoardInto(tableEl, STATE.dayList, function (day, period) {
       return schedule.grid[day] && schedule.grid[day][period];
     }, { diffMap: schedule.diff });
+  }
+
+  function renderMiniBoard(tableId, titleId, titleText, schedule) {
+    renderMiniBoardInto(document.getElementById(tableId), document.getElementById(titleId), titleText, schedule);
+  }
+
+  // 조합 교체 미리보기(세로 N쌍)를 쓴 뒤 일반/대강/세트간 교체로 다시 돌아올 때 이전
+  // 조합 미리보기가 안 남도록, 고정 좌우 2장 구조를 보여줄 때마다 조합 행 컨테이너는 숨긴다.
+  function showStaticPreviewCols() {
+    document.getElementById('previewComboRows').style.display = 'none';
+    document.getElementById('previewStaticCols').style.display = '';
   }
 
   function showPreview(leftTeacher, leftChanges, leftLabel, rightTeacher, rightChanges, rightLabel) {
@@ -1111,6 +1164,7 @@
     var rightSchedule = computeModifiedSchedule(rightTeacher, rightChanges);
     renderMiniBoard('previewLeftBoard', 'previewLeftTitle', leftTeacher + ' 교사 — ' + leftLabel, leftSchedule);
     renderMiniBoard('previewRightBoard', 'previewRightTitle', rightTeacher + ' 교사 — ' + rightLabel, rightSchedule);
+    showStaticPreviewCols();
     document.getElementById('previewSection').style.display = 'block';
   }
 
@@ -1153,6 +1207,66 @@
     });
     renderMiniBoard('previewLeftBoard', 'previewLeftTitle', '"' + setAName + '" 세트', leftSchedule);
     renderMiniBoard('previewRightBoard', 'previewRightTitle', '"' + setBName + '" 세트', rightSchedule);
+    showStaticPreviewCols();
+    document.getElementById('previewSection').style.display = 'block';
+  }
+
+  // 개별 조합 교체 선택: 세트원 수(N)만큼 좌우 쌍(각 쌍은 selectNormalSwap과 완전히 같은
+  // 원리)을 세로로 나열한다. 각 쌍의 왼쪽은 세트원 교사 관점(원래 슬롯 제거, 후보 슬롯에
+  // 세트원 자기 과목 추가), 오른쪽은 후보 교사 관점(그 반대).
+  function selectMoveComboSwap(ctx, groupA, combo) {
+    var container = document.getElementById('previewComboRows');
+    container.innerHTML = '';
+
+    combo.pairs.forEach(function (p) {
+      var row = document.createElement('div');
+
+      var label = document.createElement('div');
+      label.className = 'preview-combo-row-label';
+      label.textContent = p.member.teacher + ' ↔ ' + p.candidate.teacher;
+      row.appendChild(label);
+
+      var cols = document.createElement('div');
+      cols.className = 'preview-cols';
+
+      function buildCol() {
+        var col = document.createElement('div');
+        col.className = 'preview-col';
+        var title = document.createElement('div');
+        title.className = 'preview-col-title';
+        var scroll = document.createElement('div');
+        scroll.className = 'board-scroll';
+        var table = document.createElement('table');
+        table.className = 'board mini-board';
+        scroll.appendChild(table);
+        col.appendChild(title);
+        col.appendChild(scroll);
+        return { col: col, title: title, table: table };
+      }
+
+      var left = buildCol();
+      var right = buildCol();
+      cols.appendChild(left.col);
+      cols.appendChild(right.col);
+      row.appendChild(cols);
+      container.appendChild(row);
+
+      var leftChanges = {
+        removals: [{ day: ctx.day, period: ctx.period }],
+        additions: [{ day: p.candidate.day, period: p.candidate.period, subject: p.member.subject, className: p.member.className }]
+      };
+      var rightChanges = {
+        removals: [{ day: p.candidate.day, period: p.candidate.period }],
+        additions: [{ day: ctx.day, period: ctx.period, subject: p.candidate.subject, className: p.candidate.className }]
+      };
+      var leftSchedule = computeModifiedSchedule(p.member.teacher, leftChanges);
+      var rightSchedule = computeModifiedSchedule(p.candidate.teacher, rightChanges);
+      renderMiniBoardInto(left.table, left.title, p.member.teacher + ' 교사 — 요청', leftSchedule);
+      renderMiniBoardInto(right.table, right.title, p.candidate.teacher + ' 교사 — 상대', rightSchedule);
+    });
+
+    document.getElementById('previewStaticCols').style.display = 'none';
+    container.style.display = '';
     document.getElementById('previewSection').style.display = 'block';
   }
 

@@ -207,7 +207,7 @@ table.board thead th:first-child { border-left: 1px solid var(--line); }
 table.board tbody td.period-cell { border-left: 1px solid var(--line); }
 table.board thead th {
   font-weight: 600;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
   color: var(--ink-soft);
   padding: 12px 4px;
   background: var(--header-bg);
@@ -219,14 +219,14 @@ table.board thead th {
 table.board thead th:first-child { border-top-left-radius: 12px; }
 table.board thead th:last-child { border-top-right-radius: 12px; }
 table.board td.period-cell {
-  font-size: 0.8rem;
+  font-size: 0.88rem;
   font-weight: 500;
   color: var(--ink-soft);
   background: var(--header-bg);
   width: 68px;
   white-space: nowrap;
 }
-table.board td.slot { height: 62px; vertical-align: middle; position: relative; }
+table.board td.slot { height: 70px; vertical-align: middle; position: relative; }
 
 .cell-btn {
   all: unset;
@@ -237,27 +237,27 @@ table.board td.slot { height: 62px; vertical-align: middle; position: relative; 
   justify-content: center;
   width: 100%;
   height: 100%;
-  min-height: 62px;
+  min-height: 70px;
   cursor: pointer;
-  font-size: 0.82rem;
+  font-size: 0.95rem;
   gap: 2px;
   padding: 4px 2px;
   transition: background .12s ease;
 }
 .cell-btn .subj { font-weight: 600; }
-.cell-btn .cls { font-size: 0.72rem; color: var(--ink-soft); }
+.cell-btn .cls { font-size: 0.8rem; color: var(--ink-soft); }
 .cell-btn:hover { background: var(--accent-soft); }
 .cell-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-.cell-empty { height: 62px; }
+.cell-empty { height: 70px; }
 
 .cell-disabled {
-  height: 62px;
+  height: 70px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 0.78rem;
+  font-size: 0.9rem;
   font-weight: 500;
   color: var(--free-ink);
   background: var(--free);
@@ -311,7 +311,9 @@ table.mini-board .cell-move .cell-btn::before {
   color: var(--ink-soft);
   margin-bottom: 10px;
 }
-.cand-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+/* 후보가 아주 많을 때 오른쪽 패널이 시간표보다 훨씬 아래까지 늘어나는 걸 막기 위해
+   목록 자체를 내부 스크롤시킨다 — 패널 높이는 시간표와 비슷한 수준에서 멈춘다. */
+.cand-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; }
 .cand-list li {
   font-size: 0.88rem;
   display: flex;
@@ -424,7 +426,8 @@ table.mini-board .cell-move .cell-btn::before {
 table.mini-board { min-width: 0; font-size: 0.88em; }
 table.mini-board td.slot { height: 50px; }
 table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 50px; height: 50px; font-size: 0.9em; }
-table.mini-board td.period-cell { width: 52px; }
+table.mini-board thead th { font-size: 0.82em; }
+table.mini-board td.period-cell { width: 52px; font-size: 0.82em; }
 table.mini-board.board thead th:first-child { width: 52px; }
 table.mini-board.board thead th:not(:first-child) { width: calc((100% - 52px) / 5); }
 table.mini-board .cell-btn { pointer-events: none; cursor: default; }

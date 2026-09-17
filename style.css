@@ -441,12 +441,14 @@ table.mini-board .cell-move .cell-btn::before {
   box-shadow: var(--shadow-sm);
   padding: 10px 12px;
 }
-/* who는 "개별 조합 교체"처럼 짧은 고정 라벨이라 줄바꿈하지 않고, where는 조합 교체처럼
-   내용이 아주 길어질 수 있으니 남는 공간을 다 차지해 정상적으로 줄바꿈한다 — min-width:0
-   없이는 flex-shrink가 텍스트를 글자 단위로 억지로 쪼개거나(예: "조합"이 "조"/"합"으로
-   갈라짐) 카드 밖으로 넘쳐버린다. */
-.cand-list .who { font-weight: 500; flex: none; white-space: nowrap; }
-.cand-list .where { color: var(--ink-soft); font-size: 0.9rem; flex: 1 1 auto; min-width: 0; text-align: right; }
+/* who는 "개별 조합 교체"처럼 짧은 고정 라벨 — 폭을 40%로 눌러서 where에 자리를
+   더 내주고, word-break:keep-all로 어절 단위로만 줄바꿈되게 한다("개별 조합" /
+   "교체", 글자 하나씩 쪼개지지 않음). where는 조합 교체처럼 내용이 아주 길어질 수
+   있으니 남는 공간을 다 차지해 왼쪽 정렬로 줄바꿈한다("3-1반"처럼 숫자+한글이 붙은
+   단위도 keep-all로 안 갈라지게) — min-width:0 없이는 flex-shrink가 텍스트를
+   글자 단위로 억지로 쪼개거나 카드 밖으로 넘쳐버린다. */
+.cand-list .who { font-weight: 500; flex: none; max-width: 40%; word-break: keep-all; }
+.cand-list .where { color: var(--ink-soft); font-size: 0.9rem; flex: 1 1 auto; min-width: 0; text-align: left; word-break: keep-all; }
 .empty-state {
   font-size: 0.95rem;
   color: var(--ink-soft);

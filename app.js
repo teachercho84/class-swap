@@ -159,6 +159,10 @@ function handleResetAbsence() {
   STATE.absencesByTeacher[STATE.currentTeacher] = [];
   renderAbsenceTags();
   clearResults();
+  document.getElementById('absencePeriodAll').checked = false;
+  document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]').forEach(function (cb) {
+    cb.checked = false;
+  });
 }
 
 function wireAbsencePanel() {

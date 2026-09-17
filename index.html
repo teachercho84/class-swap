@@ -193,7 +193,12 @@
     width: 100%;
     min-width: 560px;
     background: var(--paper);
+    table-layout: fixed;
   }
+  /* table-layout:fixed는 첫 번째 행(헤더)의 셀 너비로 전체 열 너비가 정해진다 — 교시 열은
+     고정폭, 나머지 5개 요일 열은 남는 공간을 정확히 5등분해서 서로 폭이 같아지게 한다. */
+  table.board thead th:first-child { width: 68px; }
+  table.board thead th:not(:first-child) { width: calc((100% - 68px) / 5); }
   table.board th, table.board td {
     border: 1px solid var(--line);
     border-top: none;
@@ -414,6 +419,8 @@
   table.mini-board td.slot { height: 40px; }
   table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 40px; height: 40px; font-size: 0.82em; }
   table.mini-board td.period-cell { width: 44px; }
+  table.mini-board.board thead th:first-child { width: 44px; }
+  table.mini-board.board thead th:not(:first-child) { width: calc((100% - 44px) / 5); }
   table.mini-board .cell-btn { pointer-events: none; cursor: default; }
   table.mini-board .cell-btn:hover { background: transparent; }
 

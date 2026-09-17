@@ -63,6 +63,11 @@ function clearResults() {
   var panel = document.getElementById('sidePanel');
   panel.innerHTML = '<div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>';
   hidePreview();
+  // 교사 전환·결근 등록/삭제로 이전 배치 결과가 무효해질 수 있으므로 같이 비운다.
+  var autoEl = document.getElementById('autoAssignResults');
+  if (autoEl) autoEl.innerHTML = '';
+  var manualEl = document.getElementById('manualAssignResults');
+  if (manualEl) manualEl.innerHTML = '';
 }
 
 // ---------- 출장·결근 관리 ----------
@@ -176,6 +181,7 @@ function wireAbsencePanel() {
   document.getElementById('absenceAddBtn').addEventListener('click', handleAddAbsence);
   document.getElementById('absenceSaveBtn').addEventListener('click', handleSaveAbsence);
   document.getElementById('autoAssignBtn').addEventListener('click', runAutoAssign);
+  document.getElementById('manualAssignBtn').addEventListener('click', renderManualAssignList);
 
   var allBox = document.getElementById('absencePeriodAll');
   var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');
@@ -205,6 +211,30 @@ function findAbsenceAffectedClasses(teacher) {
   return result;
 }
 
+// 그 교사가 사본(teacherMap)에서 해당 요일에 이미 몇 개의 수업을 갖고 있는지 —
+// 새로 배정받는 쪽은 항상 ctx.day에 수업이 하나 늘어나므로, 후보가 여럿일 때 이
+// 값이 가장 작은 쪽을 우선 선택해 특정 교사가 하루에 몰리는 걸 완화한다.
+function countClassesOnDay(teacherMap, teacher, day) {
+  var daySchedule = teacherMap[teacher] && teacherMap[teacher][day];
+  if (!daySchedule) return 0;
+  var count = 0;
+  for (var period = 1; period <= 7; period++) {
+    var rec = daySchedule[period];
+    if (rec && !rec.isFree && !rec.isChangChe) count++;
+  }
+  return count;
+}
+
+function pickLeastLoaded(items, teacherMap, day, getTeacherName) {
+  var best = items[0];
+  var bestLoad = countClassesOnDay(teacherMap, getTeacherName(best), day);
+  for (var i = 1; i < items.length; i++) {
+    var load = countClassesOnDay(teacherMap, getTeacherName(items[i]), day);
+    if (load < bestLoad) { best = items[i]; bestLoad = load; }
+  }
+  return best;
+}
+
 // 한 수업(ctx)의 대체를 찾아 사본(teacherMap/classMap)에 반영하고, 화면에 보여줄
 // 설명 문구를 돌려준다(후보가 전혀 없으면 null).
 function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
@@ -213,25 +243,30 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
       var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
       var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, teacherMap, classMap, absences).setSwaps;
       if (setSwaps.length > 0) {
+        // 세트간 교체는 ctx 본인만 이동시키는 단순화라(2부 참고) 상대 후보 교사가
+        // 없어 부담 비교 대상이 없다 — 그대로 첫 옵션을 쓴다.
         var s = setSwaps[0];
         applyRelocateToWorkingMaps(teacherMap, classMap, ctx, s.targetDay, s.targetPeriod);
         return '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동';
       }
       var combos = findMoveComboCandidates(ctx, groupA, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
-      if (combos.length > 0) {
-        var pair = combos[0].pairs.filter(function (p) { return p.member.teacher === ctx.teacher; })[0];
-        if (pair) {
-          applySwapToWorkingMaps(teacherMap, classMap,
-            { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: pair.member.subject, className: pair.member.className },
-            { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, subject: pair.candidate.subject, className: pair.candidate.className }
-          );
-          return pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + pair.candidate.day + '요일 ' + pair.candidate.period + '교시)';
-        }
+      var relevantCombos = combos.map(function (combo) {
+        var pair = combo.pairs.filter(function (p) { return p.member.teacher === ctx.teacher; })[0];
+        return pair ? { combo: combo, pair: pair } : null;
+      }).filter(function (x) { return x; });
+      if (relevantCombos.length > 0) {
+        var picked = pickLeastLoaded(relevantCombos, teacherMap, ctx.day, function (x) { return x.pair.candidate.teacher; });
+        var pair = picked.pair;
+        applySwapToWorkingMaps(teacherMap, classMap,
+          { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: pair.member.subject, className: pair.member.className },
+          { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, subject: pair.candidate.subject, className: pair.candidate.className }
+        );
+        return pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + pair.candidate.day + '요일 ' + pair.candidate.period + '교시)';
       }
     } else {
       var normal = findNormalSwapCandidates(ctx, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
       if (normal.length > 0) {
-        var c = normal[0];
+        var c = pickLeastLoaded(normal, teacherMap, ctx.day, function (x) { return x.teacher; });
         applySwapToWorkingMaps(teacherMap, classMap,
           { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className },
           { teacher: c.teacher, day: c.day, period: c.period, subject: c.subject, className: c.className }
@@ -243,13 +278,15 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
 
   var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, teacherMap, STATE.teacherNames);
   if (tier2.length > 0) {
-    applySubstituteToWorkingMaps(teacherMap, ctx, tier2[0].teacher);
-    return tier2[0].teacher + ' 교사 (대강)';
+    var pick2 = pickLeastLoaded(tier2, teacherMap, ctx.day, function (x) { return x.teacher; });
+    applySubstituteToWorkingMaps(teacherMap, ctx, pick2.teacher);
+    return pick2.teacher + ' 교사 (대강)';
   }
   var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames);
   if (tier3.length > 0) {
-    applySubstituteToWorkingMaps(teacherMap, ctx, tier3[0].teacher);
-    return tier3[0].teacher + ' 교사 (대강, 참고용)';
+    var pick3 = pickLeastLoaded(tier3, teacherMap, ctx.day, function (x) { return x.teacher; });
+    applySubstituteToWorkingMaps(teacherMap, ctx, pick3.teacher);
+    return pick3.teacher + ' 교사 (대강, 참고용)';
   }
   return null;
 }
@@ -288,6 +325,57 @@ function runAutoAssign() {
   });
 }
 
+// "수동으로 대체 찾기": 영향받는 수업을 목록으로 보여주고, 하나를 클릭하면 그리드에서
+// 그 칸을 직접 클릭한 것과 완전히 동일하게 동작한다(handleCellClick 재사용 — 새 로직
+// 없음). 후보를 실제로 선택하면 markManualAssignResolved가 그 항목에 체크 표시를 남긴다.
+function renderManualAssignList() {
+  var listEl = document.getElementById('manualAssignResults');
+  listEl.innerHTML = '';
+
+  var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
+  if (affected.length === 0) {
+    var empty = document.createElement('div');
+    empty.className = 'empty-state';
+    empty.textContent = '등록된 결근에 해당하는 수업이 없습니다.';
+    listEl.appendChild(empty);
+    return;
+  }
+
+  affected.forEach(function (ctx) {
+    var row = document.createElement('button');
+    row.type = 'button';
+    row.className = 'manual-assign-row';
+    row.dataset.day = ctx.day;
+    row.dataset.period = ctx.period;
+
+    var label = document.createElement('span');
+    label.className = 'manual-assign-label';
+    label.textContent = ctx.day + '요일 ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '');
+    row.appendChild(label);
+
+    var check = document.createElement('span');
+    check.className = 'manual-assign-check';
+    check.textContent = '✓';
+    row.appendChild(check);
+
+    row.addEventListener('click', function () {
+      var cellEl = document.querySelector('#boardTable td[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
+      var rec = getRecord(STATE.teacherScheduleMap, ctx.teacher, ctx.day, ctx.period);
+      if (cellEl && rec) handleCellClick(rec, cellEl);
+    });
+
+    listEl.appendChild(row);
+  });
+}
+
+function markManualAssignResolved(ctx) {
+  if (!ctx) return;
+  var listEl = document.getElementById('manualAssignResults');
+  if (!listEl) return;
+  var row = listEl.querySelector('[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
+  if (row) row.classList.add('manual-assign-resolved');
+}
+
 // ---------- 표시 옵션: 대강 우선 ----------
 function wireOptionsPanel() {
   document.getElementById('preferSubstituteCheckbox').addEventListener('change', function (e) {
@@ -297,6 +385,10 @@ function wireOptionsPanel() {
 }
 
 var lastSelectedCell = null;
+// 결근 자동 배정의 "수동으로 대체 찾기" 목록이 체크 표시를 남길 때, 지금 어떤
+// 수업(day/period)이 선택돼 있는지 알아야 한다 — 후보 선택은 makeCandListItem의
+// 클릭 핸들러 한 곳에서 일어나므로 거기서 이 값을 참조한다.
+var lastSelectedCtx = null;
 
 function handleCellClick(rec, cellEl) {
   if (lastSelectedCell) lastSelectedCell.classList.remove('cell-selected');
@@ -305,6 +397,7 @@ function handleCellClick(rec, cellEl) {
   hidePreview(); // 새 셀을 클릭하면 이전 미리보기는 더 이상 유효하지 않으므로 접어둠
 
   var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
+  lastSelectedCtx = ctx;
 
   // "대강 우선"이 켜져 있으면 1순위(맞교체·이동수업) 계산·표시를 아예 건너뛰고
   // 곧장 2·3순위 폴백으로 간다.
@@ -357,6 +450,7 @@ function makeCandListItem(whoText, whereText, onSelect) {
       }
       btn.classList.add('is-selected');
       onSelect();
+      markManualAssignResolved(lastSelectedCtx); // "수동으로 대체 찾기" 목록에 체크 표시
     });
     li.appendChild(btn);
   } else {

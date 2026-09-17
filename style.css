@@ -227,7 +227,7 @@ select#teacherSelect:focus-visible {
 }
 .absence-tag button { all: unset; box-sizing: border-box; cursor: pointer; font-weight: 700; line-height: 1; }
 
-#autoAssignBtn {
+#manualAssignBtn, #autoAssignBtn {
   all: unset;
   box-sizing: border-box;
   cursor: pointer;
@@ -235,12 +235,15 @@ select#teacherSelect:focus-visible {
   font-weight: 600;
   padding: 7px 14px;
   border-radius: 8px;
-  background: var(--accent);
-  color: var(--accent-ink);
   transition: opacity .15s ease;
-  margin-left: auto; /* 저장하기 옆 줄에서 오른쪽 끝으로 밀어낸다 */
 }
-#autoAssignBtn:hover { opacity: .9; }
+#manualAssignBtn {
+  background: var(--free);
+  color: var(--ink);
+  margin-left: auto; /* 이 버튼부터(수동+자동) 저장하기 옆 줄에서 오른쪽 끝으로 밀어낸다 */
+}
+#autoAssignBtn { background: var(--accent); color: var(--accent-ink); }
+#manualAssignBtn:hover, #autoAssignBtn:hover { opacity: .9; }
 .auto-assign-results {
   display: flex;
   flex-direction: column;
@@ -263,6 +266,36 @@ select#teacherSelect:focus-visible {
 .auto-assign-label { font-weight: 500; flex: none; max-width: 45%; word-break: keep-all; }
 .auto-assign-outcome { color: var(--ink-soft); flex: 1 1 auto; min-width: 0; text-align: left; word-break: keep-all; }
 .auto-assign-outcome-empty { color: var(--danger); }
+
+.manual-assign-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+/* .auto-assign-row와 같은 카드 톤이지만 클릭 가능한 <button> — 클릭하면 그리드에서
+   그 칸을 직접 클릭한 것과 동일하게 동작(handleCellClick 재사용). */
+.manual-assign-row {
+  all: unset;
+  box-sizing: border-box;
+  display: flex;
+  width: 100%;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+  transition: box-shadow .15s ease, transform .15s ease;
+}
+.manual-assign-row:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.manual-assign-label { font-weight: 500; word-break: keep-all; }
+.manual-assign-check { color: var(--added); font-weight: 700; opacity: 0; flex: none; }
+.manual-assign-row.manual-assign-resolved { border-color: var(--added); background: var(--added-soft); }
+.manual-assign-row.manual-assign-resolved .manual-assign-check { opacity: 1; }
 
 .options-panel {
   background: var(--paper);

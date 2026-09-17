@@ -36,6 +36,8 @@ export function renderBoardInto(table, dayList, getRec, opts) {
       var rec = getRec(day, period);
       var td = document.createElement('td');
       td.className = 'slot';
+      td.dataset.day = day;
+      td.dataset.period = period;
       var state = cellState(rec);
       var diffInfo = opts.diffMap ? opts.diffMap[day + '_' + period] : null;
       if (diffInfo) td.className += ' slot-' + diffInfo.type;

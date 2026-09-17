@@ -81,7 +81,7 @@ body {
   padding: 32px 20px 72px;
   line-height: 1.55;
 }
-.wrap { max-width: 1040px; margin: 0 auto; }
+.wrap { max-width: 1400px; margin: 0 auto; }
 
 header.masthead {
   padding-bottom: 24px;
@@ -421,12 +421,12 @@ table.mini-board .cell-move .cell-btn::before {
   color: var(--ink-soft);
   margin-bottom: 10px;
 }
-table.mini-board { min-width: 0; font-size: 0.7em; }
-table.mini-board td.slot { height: 40px; }
-table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 40px; height: 40px; font-size: 0.82em; }
-table.mini-board td.period-cell { width: 44px; }
-table.mini-board.board thead th:first-child { width: 44px; }
-table.mini-board.board thead th:not(:first-child) { width: calc((100% - 44px) / 5); }
+table.mini-board { min-width: 0; font-size: 0.88em; }
+table.mini-board td.slot { height: 50px; }
+table.mini-board .cell-btn, table.mini-board .cell-disabled, table.mini-board .cell-empty { min-height: 50px; height: 50px; font-size: 0.9em; }
+table.mini-board td.period-cell { width: 52px; }
+table.mini-board.board thead th:first-child { width: 52px; }
+table.mini-board.board thead th:not(:first-child) { width: calc((100% - 52px) / 5); }
 table.mini-board .cell-btn { pointer-events: none; cursor: default; }
 table.mini-board .cell-btn:hover { background: transparent; }
 

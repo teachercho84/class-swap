@@ -441,8 +441,12 @@ table.mini-board .cell-move .cell-btn::before {
   box-shadow: var(--shadow-sm);
   padding: 10px 12px;
 }
-.cand-list .who { font-weight: 500; }
-.cand-list .where { color: var(--ink-soft); font-size: 0.9rem; }
+/* who는 "개별 조합 교체"처럼 짧은 고정 라벨이라 줄바꿈하지 않고, where는 조합 교체처럼
+   내용이 아주 길어질 수 있으니 남는 공간을 다 차지해 정상적으로 줄바꿈한다 — min-width:0
+   없이는 flex-shrink가 텍스트를 글자 단위로 억지로 쪼개거나(예: "조합"이 "조"/"합"으로
+   갈라짐) 카드 밖으로 넘쳐버린다. */
+.cand-list .who { font-weight: 500; flex: none; white-space: nowrap; }
+.cand-list .where { color: var(--ink-soft); font-size: 0.9rem; flex: 1 1 auto; min-width: 0; text-align: right; }
 .empty-state {
   font-size: 0.95rem;
   color: var(--ink-soft);

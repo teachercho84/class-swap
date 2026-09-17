@@ -227,7 +227,6 @@ select#teacherSelect:focus-visible {
 }
 .absence-tag button { all: unset; box-sizing: border-box; cursor: pointer; font-weight: 700; line-height: 1; }
 
-.auto-assign-head { margin-top: 14px; }
 #autoAssignBtn {
   all: unset;
   box-sizing: border-box;
@@ -239,6 +238,7 @@ select#teacherSelect:focus-visible {
   background: var(--accent);
   color: var(--accent-ink);
   transition: opacity .15s ease;
+  margin-left: auto; /* 저장하기 옆 줄에서 오른쪽 끝으로 밀어낸다 */
 }
 #autoAssignBtn:hover { opacity: .9; }
 .auto-assign-results {

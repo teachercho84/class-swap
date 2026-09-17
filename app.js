@@ -60,7 +60,7 @@ function renderGrid() {
 
 function clearResults() {
   var panel = document.getElementById('sidePanel');
-  panel.innerHTML = '<div class="side-panel"><div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div></div>';
+  panel.innerHTML = '<div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>';
   hidePreview();
 }
 
@@ -192,26 +192,25 @@ function handleCellClick(rec, cellEl) {
 
   var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
 
-  // 맞교체·이동수업(위 60%)과 대강(아래 40%) 두 패널을 항상 같이 계산한다 — 예전처럼
-  // 한쪽에 후보가 있으면 다른 쪽을 안 보여주는 폴백은 하지 않는다. 2·3순위끼리의
-  // 폴백(2순위 없으면 3순위)만 그대로 유지한다.
   var absences = currentAbsences();
-  var swapData;
+  var tier1, tier1NonEmpty;
   if (ctx.moveGroupId) {
     var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
     var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, absences).setSwaps;
     var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
-    swapData = { isMoveGroup: true, groupA: groupA, setSwaps: setSwaps, combos: combos };
+    tier1 = { setSwaps: setSwaps, combos: combos };
+    tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
   } else {
-    swapData = { isMoveGroup: false, results: findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences) };
+    tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
+    tier1NonEmpty = tier1.length > 0;
   }
+  if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
 
   var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, STATE.teacherScheduleMap, STATE.teacherNames);
-  var subData = tier2.length > 0
-    ? { tier: 2, items: tier2 }
-    : { tier: 3, items: findFallbackSubstituteCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames) };
+  if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
 
-  renderResults(ctx, swapData, subData);
+  var tier3 = findFallbackSubstituteCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames);
+  renderResults(ctx, 3, tier3);
 }
 
 // 후보 한 줄(<li>)을 만든다. onSelect가 있으면 클릭 가능한 버튼으로, 없으면(이동수업처럼
@@ -297,94 +296,65 @@ function groupComboPairsByClass(pairs) {
   return order.map(function (cn) { return byClass[cn]; });
 }
 
-// 오른쪽 영역에 "맞교체·이동수업"(위 60%)과 "대강"(아래 40%) 두 카드를 항상 같이
-// 그린다 — 한쪽에 후보가 있어도 다른 쪽을 가리지 않는다(각자 없으면 그 카드에만
-// "후보 없음"). 후보를 클릭하면 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다.
-// 이동수업 세트는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.
-function renderResults(ctx, swapData, subData) {
-  var wrap = document.getElementById('sidePanel');
-  wrap.innerHTML = '';
+// 오른쪽 후보 패널에 후보 목록을 그린다. 1순위(일반)·2·3순위 후보는 클릭하면 선택되어
+// 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다. 이동수업 세트(1순위, moveGroupId
+// 있는 경우)는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.
+function renderResults(ctx, tier, data) {
+  var body = document.getElementById('sidePanel');
+  body.innerHTML = '';
 
-  var context = document.createElement('div');
-  context.className = 'results-context';
   var titleDiv = document.createElement('div');
   titleDiv.className = 'results-title';
   titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시';
-  context.appendChild(titleDiv);
+  body.appendChild(titleDiv);
+
   var metaDiv = document.createElement('div');
   metaDiv.className = 'results-meta';
   metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
-  context.appendChild(metaDiv);
-  wrap.appendChild(context);
+  body.appendChild(metaDiv);
 
-  var swapPanel = document.createElement('div');
-  swapPanel.className = 'side-panel side-panel-swap';
-  renderSwapPanel(swapPanel, ctx, swapData);
-  wrap.appendChild(swapPanel);
-
-  var subPanel = document.createElement('div');
-  subPanel.className = 'side-panel side-panel-sub';
-  renderSubstitutePanel(subPanel, ctx, subData);
-  wrap.appendChild(subPanel);
-}
-
-function renderSwapPanel(panel, ctx, swapData) {
-  var title = document.createElement('div');
-  title.className = 'side-panel-title';
-  title.textContent = '맞교체·이동수업';
-  panel.appendChild(title);
-
-  if (swapData.isMoveGroup) {
-    var groupA = swapData.groupA;
-    var items = [];
-    swapData.setSwaps.forEach(function (s) {
+  if (tier === 1 && ctx.moveGroupId) {
+    var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
+    var items0 = [];
+    data.setSwaps.forEach(function (s) {
       var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
-      items.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
+      items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
         selectMoveSetSwap(ctx, groupA, s);
       }));
     });
-    swapData.combos.forEach(function (combo) {
+    data.combos.forEach(function (combo) {
       var classText = groupComboPairsByClass(combo.pairs).map(function (g) {
         var memberText = g.members.map(function (m) { return m.teacher + '(' + m.subject + ')'; }).join('+');
         return g.className + '반 [' + memberText + '] ↔ ' + g.candidate.teacher + ' 교사';
       }).join(' · ');
       var whereText = combo.targetDay + '요일 ' + combo.targetPeriod + '교시로 이동 — ' + classText;
-      items.push(makeCandListItem('개별 조합 교체', whereText, function () {
+      items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
         selectMoveComboSwap(ctx, groupA, combo);
       }));
     });
-    appendTierBlock(panel, 'tier-1', '세트 이동/교체 가능', null, items);
-  } else {
-    var items1 = swapData.results.map(function (c) {
+    appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
+  } else if (tier === 1) {
+    var items1 = data.map(function (c) {
       return makeCandListItem(c.teacher + ' 교사', c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')', function () {
         selectNormalSwap(ctx, c);
       });
     });
-    appendTierBlock(panel, 'tier-1', '맞교체 가능', null, items1);
-  }
-}
-
-function renderSubstitutePanel(panel, ctx, subData) {
-  var title = document.createElement('div');
-  title.className = 'side-panel-title';
-  title.textContent = '대강';
-  panel.appendChild(title);
-
-  if (subData.tier === 2) {
+    appendTierBlock(body, 'tier-1', '1순위: 맞교체 가능', null, items1);
+  } else if (tier === 2) {
     var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
-    var items2 = subData.items.map(function (c) {
+    var items2 = data.map(function (c) {
       return makeCandListItem(c.teacher + ' 교사', null, function () {
         selectSubstitute(ctx, c.teacher);
       });
     });
-    appendTierBlock(panel, 'tier-2', '동교과 대강 후보', note2, items2);
-  } else {
-    var items3 = subData.items.map(function (c) {
+    appendTierBlock(body, 'tier-2', '2순위: 동교과 대강 후보', note2, items2);
+  } else if (tier === 3) {
+    var items3 = data.map(function (c) {
       return makeCandListItem(c.teacher + ' 교사', null, function () {
         selectSubstitute(ctx, c.teacher);
       });
     });
-    appendTierBlock(panel, 'tier-3', '전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
+    appendTierBlock(body, 'tier-3', '3순위: 전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
   }
 }
 

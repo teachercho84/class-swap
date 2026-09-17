@@ -162,11 +162,13 @@
     padding: 6px 12px;
     border-radius: 999px;
   }
-  .swatch { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-  .swatch.free { background: var(--free-ink); opacity: .55; }
-  .swatch.changche { background: var(--changche-ink); }
-  .swatch.move { background: var(--warm); }
-  .swatch.normal { background: var(--accent); }
+  /* 범례 색은 실제 그리드 셀에 쓰이는 배경색을 그대로 가져온다 (임의의 진한 색이 아님) —
+     그래야 범례를 보고 그리드에서 색을 찾았을 때 서로 맞아 보인다. */
+  .swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; border: 1px solid var(--line); }
+  .swatch.normal { background: var(--paper); }
+  .swatch.move { background: var(--warm-soft); border-color: var(--warm); }
+  .swatch.free { background: var(--free); }
+  .swatch.changche { background: var(--changche); border-color: var(--changche-ink); }
 
   /* ---- 상단 영역: 왼쪽 60% 시간표 / 오른쪽 40% 후보 패널 ---- */
   .main-row {
@@ -263,9 +265,17 @@
   .cell-disabled.changche { background: var(--changche); color: var(--changche-ink); }
 
   .cell-move { background: var(--warm-soft); }
+  .cell-move .cell-btn { position: relative; }
+  /* 화살표를 flex 흐름 안에 넣고 세로로 쌓으면(subj/cls와 나란히) 셀이 작아지는 미리보기
+     보드에서 위로 밀려 텍스트와 겹친다 — 흐름 밖으로 빼서 우상단에 고정된 배지로 표시하면
+     셀 크기와 무관하게 항상 같은 자리에 예쁘게 붙는다. */
   .cell-move .cell-btn::before {
     content: "\21C4";
-    font-size: 0.7rem;
+    position: absolute;
+    top: 3px;
+    right: 4px;
+    font-size: 0.65em;
+    line-height: 1;
     color: var(--warm);
     font-weight: 700;
   }

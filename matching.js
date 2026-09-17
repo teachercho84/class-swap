@@ -199,3 +199,53 @@ export function findFallbackSubstituteCandidates(ctx, teacherScheduleMap, teache
   });
   return results;
 }
+
+// ---------- 결근 자동 배정용 working-copy 헬퍼 ----------
+// 배치로 여러 수업을 한 번에 자동 배정할 때, 앞에서 이미 확정한 선택을 뒤에 오는
+// 탐색에도 반영해야 같은 사람을 두 자리에 겹쳐 배정하는 걸 막을 수 있다. 실제
+// STATE의 맵은 건드리지 않고, 이 사본에만 반영해가며 위 find* 함수들을 그대로
+// 재사용한다(그 함수들은 이미 맵을 파라미터로 받으므로 엔진 자체는 손댈 필요 없음).
+export function cloneScheduleMap(map) {
+  return JSON.parse(JSON.stringify(map));
+}
+
+function setSlot(map, teacher, day, period, record) {
+  if (record) {
+    if (!map[teacher]) map[teacher] = {};
+    if (!map[teacher][day]) map[teacher][day] = {};
+    map[teacher][day][period] = record;
+  } else if (map[teacher] && map[teacher][day]) {
+    delete map[teacher][day][period];
+  }
+}
+
+// 맞교체·개별 조합 교체는 둘 다 "두 사람이 시간을 맞바꾼다"는 같은 모양이라 이
+// 한 함수로 처리한다. a, b: { teacher, day, period, subject, className }.
+export function applySwapToWorkingMaps(teacherMap, classMap, a, b) {
+  setSlot(teacherMap, a.teacher, a.day, a.period, null);
+  setSlot(teacherMap, b.teacher, b.day, b.period, null);
+  setSlot(teacherMap, a.teacher, b.day, b.period, { teacher: a.teacher, day: b.day, period: b.period, subject: a.subject, className: a.className, isFree: false, isChangChe: false, moveGroupId: null });
+  setSlot(teacherMap, b.teacher, a.day, a.period, { teacher: b.teacher, day: a.day, period: a.period, subject: b.subject, className: b.className, isFree: false, isChangChe: false, moveGroupId: null });
+
+  setSlot(classMap, a.className, a.day, a.period, null);
+  setSlot(classMap, b.className, b.day, b.period, null);
+  setSlot(classMap, a.className, b.day, b.period, { teacher: a.teacher, day: b.day, period: b.period, subject: a.subject, className: a.className, isFree: false, isChangChe: false, moveGroupId: null });
+  setSlot(classMap, b.className, a.day, a.period, { teacher: b.teacher, day: a.day, period: a.period, subject: b.subject, className: b.className, isFree: false, isChangChe: false, moveGroupId: null });
+}
+
+// 세트간 교체는 groupA 전체 ↔ groupB 전체가 통째로 움직이는 것이라(멤버별 1:1 짝이
+// 아님 — selectMoveSetSwap의 인덱스 매칭은 미리보기 표시용일 뿐), 배치 자동 배정에서는
+// "내(ctx) 자리만 정확히 옮기면 된다"는 원칙으로 ctx 한 명만 이동시킨다 — 원래 자리는
+// 비우고 targetDay/targetPeriod에 자기 과목으로 새로 채운다.
+export function applyRelocateToWorkingMaps(teacherMap, classMap, ctx, newDay, newPeriod) {
+  setSlot(teacherMap, ctx.teacher, ctx.day, ctx.period, null);
+  setSlot(teacherMap, ctx.teacher, newDay, newPeriod, { teacher: ctx.teacher, day: newDay, period: newPeriod, subject: ctx.subject, className: ctx.className, isFree: false, isChangChe: false, moveGroupId: null });
+  setSlot(classMap, ctx.className, ctx.day, ctx.period, null);
+  setSlot(classMap, ctx.className, newDay, newPeriod, { teacher: ctx.teacher, day: newDay, period: newPeriod, subject: ctx.subject, className: ctx.className, isFree: false, isChangChe: false, moveGroupId: null });
+}
+
+// 대강은 원래 담당자의 레코드를 지우지 않는다("대강" 표시만, 실제로는 아무것도 안
+// 없어진다는 기존 원칙과 동일) — 대강 교사 쪽에만 그 시간에 새 레코드가 추가된다.
+export function applySubstituteToWorkingMaps(teacherMap, ctx, substituteTeacher) {
+  setSlot(teacherMap, substituteTeacher, ctx.day, ctx.period, { teacher: substituteTeacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className, isFree: false, isChangChe: false, moveGroupId: null });
+}

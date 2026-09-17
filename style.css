@@ -227,6 +227,43 @@ select#teacherSelect:focus-visible {
 }
 .absence-tag button { all: unset; box-sizing: border-box; cursor: pointer; font-weight: 700; line-height: 1; }
 
+.auto-assign-head { margin-top: 14px; }
+#autoAssignBtn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: opacity .15s ease;
+}
+#autoAssignBtn:hover { opacity: .9; }
+.auto-assign-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+/* .cand-list li와 같은 카드 톤이지만 클릭 불가(읽기 전용 요약) — who/where 대신
+   수업 정보/결과를 한 줄에 좌우로 배치. */
+.auto-assign-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 0.88rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.auto-assign-label { font-weight: 500; flex: none; max-width: 45%; word-break: keep-all; }
+.auto-assign-outcome { color: var(--ink-soft); flex: 1 1 auto; min-width: 0; text-align: left; word-break: keep-all; }
+.auto-assign-outcome-empty { color: var(--danger); }
+
 .options-panel {
   background: var(--paper);
   border: 1px solid var(--line);

@@ -360,6 +360,9 @@ table.mini-board .cell-move .cell-btn::before {
 
 .cell-selected { box-shadow: inset 0 0 0 2px var(--accent); }
 
+/* 맞교체·대강 두 패널이 공유하는 헤더 — #sidePanel(플렉스 세로축)의 첫 항목으로,
+   grow 없이 자기 내용만큼만 차지한다. */
+.results-context { flex: none; }
 .results-title {
   font-size: 1.12rem;
   font-weight: 600;
@@ -430,23 +433,44 @@ table.mini-board .cell-move .cell-btn::before {
 .cand-btn.is-selected .who { color: var(--accent-ink); }
 .cand-btn.is-selected .where { color: var(--accent-ink); opacity: .82; }
 
+/* #sidePanel 자체(레이아웃 전용, 카드 배경 없음) — 위: 맞교체·이동수업 카드,
+   아래: 대강 카드를 세로로 담는다. 진짜 고정 상한(max-height)이 있어야
+   align-items:stretch가 왼쪽 시간표까지 같이 늘려버리는 걸 막을 수 있다(왼쪽 시간표
+   7교시 높이와 비슷한 값). */
+.side-panel-wrap {
+  height: 100%;
+  max-height: 550px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+/* 개별 카드(placeholder 하나뿐일 때도, 맞교체/대강 두 장으로 나뉠 때도 공용) —
+   flex-basis를 0으로 두고 grow 비율만으로 나누므로 내용量과 무관하게 정확히
+   비율대로 쪼개진다. 그 안의 .tier/.cand-list가 남는 공간을 마저 차지해
+   내부 스크롤을 담당한다(min-height:0 필요). */
 .side-panel {
   background: var(--paper);
   border-radius: 12px;
   box-shadow: var(--shadow);
   padding: 20px 18px;
-  min-height: 120px;
-  height: 100%;
-  /* 진짜 고정 상한. 이게 없으면 후보가 많아질 때 height:100%가 커지는 대로
-     align-items:stretch가 왼쪽 시간표까지 같이 늘려버려서 스크롤이 걸릴 일이 없어진다
-     (페이지 전체가 그냥 다같이 커짐) — max-height로 여기서 멈추게 해야 그 안의
-     .cand-list가 내부 스크롤을 맡을 수 있다. 왼쪽 시간표(7교시) 높이와 비슷한 값. */
-  max-height: 550px;
+  min-height: 0;
+  flex: 1 1 auto;
   display: flex;
   flex-direction: column;
   font-size: 0.95rem;
 }
+.side-panel-swap { flex: 7 1 0; }
+.side-panel-sub { flex: 3 1 0; }
 .side-panel .placeholder { color: var(--ink-soft); font-size: 0.95rem; }
+.side-panel-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  margin-bottom: 10px;
+  flex: none;
+}
 
 /* ---- preview (changed schedules) ---- */
 .preview-section {

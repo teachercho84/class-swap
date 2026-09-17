@@ -494,9 +494,6 @@
 (function () {
   'use strict';
 
-  // ---------- constants ----------
-  var BLOCK_ROWS = 18;
-
   // ---------- parsing ----------
   function computeMoveGroupId(subject, className, day, period) {
     if (!subject) return null;
@@ -508,40 +505,53 @@
     return day + '_' + period + '_' + grade + '_' + ch;
   }
 
-  function parseBlockSheet(rows2D) {
-    var nBlocksRaw = rows2D.length / BLOCK_ROWS;
-    var nBlocks = Math.floor(nBlocksRaw);
-    if (nBlocksRaw !== nBlocks) {
-      console.warn('[parseBlockSheet] 행 수(' + rows2D.length + ')가 ' + BLOCK_ROWS + '의 배수가 아님 — 마지막 불완전 블록은 무시합니다.');
+  // '전체 교사 시간표'(매트릭스, 학교 시간표 프로그램이 직접 내보내는 원본)를 파싱한다.
+  // buildTeacherRecords가 기대하는 { blocks: [{key, tuples}], dayList } 모양으로 돌려주므로
+  // 아래 인덱스 빌더·매칭 함수·렌더링은 전혀 손댈 필요가 없다.
+  // 교사 한 명당 정확히 2행(과목행+반정보행)이고, 요일별 교시 수가 다를 수 있어(금요일만
+  // 6교시) 헤더 두 줄을 직접 스캔해서 열 구조를 동적으로 읽는다. 교사 수는 절대 하드코딩하지
+  // 않고 시트에 실제로 있는 행 수(rows2D.length)만큼 끝까지 순회 — 학기마다 교사가 늘거나
+  // 줄어서 행이 추가/삭제돼도 코드 수정 없이 그대로 파싱된다.
+  function parseMatrixSheet(rows2D) {
+    var dayRow = rows2D[2] || [];
+    var periodRow = rows2D[3] || [];
+    var cols = [];
+    var currentDay = null;
+    var dayList = [];
+    for (var c = 2; c < dayRow.length; c++) {
+      if (dayRow[c] != null && String(dayRow[c]).trim() !== '') {
+        currentDay = String(dayRow[c]).trim();
+        if (dayList.indexOf(currentDay) === -1) dayList.push(currentDay);
+      }
+      var p = periodRow[c];
+      if (p == null || p === '') continue;
+      var period = parseInt(p, 10);
+      if (isNaN(period)) continue;
+      cols.push({ col: c, day: currentDay, period: period });
     }
+    if (!cols.length) throw new Error('전체 교사 시간표에서 요일/교시 헤더를 찾을 수 없습니다.');
+
     var blocks = [];
-    var dayList = null;
-    for (var b = 0; b < nBlocks; b++) {
-      var base = b * BLOCK_ROWS;
-      var keyRow = rows2D[base + 1] || [];
-      var key = keyRow[3] == null ? '' : String(keyRow[3]).trim();
-      if (!key) {
-        console.warn('[parseBlockSheet] ' + (base + 1) + '행 블록에 교사/반 이름(D열)이 없어 건너뜁니다.');
-        continue;
-      }
-      var dayHeaderRow = rows2D[base + 2] || [];
-      var days = dayHeaderRow.slice(1, 6).map(function (d) { return d == null ? '' : String(d).trim(); });
-      if (!dayList) dayList = days;
-      var tuples = [];
-      for (var p = 0; p < 7; p++) {
-        var period = p + 1;
-        var subjRow = rows2D[base + 3 + p * 2] || [];
-        var infoRow = rows2D[base + 4 + p * 2] || [];
-        for (var d = 0; d < 5; d++) {
-          var subjectRaw = subjRow[d + 1];
-          var subject = subjectRaw == null ? '' : String(subjectRaw).trim();
-          if (!subject) continue;
-          var infoRaw = infoRow[d + 1];
+    var r = 4;
+    while (r < rows2D.length) {
+      var row = rows2D[r];
+      if (row && row[1] != null && String(row[1]).trim() !== '') {
+        var teacher = String(row[1]).trim();
+        var infoRow = rows2D[r + 1] || [];
+        var tuples = [];
+        cols.forEach(function (cd) {
+          var subjRaw = row[cd.col];
+          var subject = subjRaw == null ? '' : String(subjRaw).trim().replace(/\n/g, '');
+          if (!subject) return;
+          var infoRaw = infoRow[cd.col];
           var info = infoRaw == null ? '' : String(infoRaw).trim();
-          tuples.push({ key: key, day: days[d] || (dayList && dayList[d]), period: period, subject: subject, info: info });
-        }
+          tuples.push({ key: teacher, day: cd.day, period: cd.period, subject: subject, info: info });
+        });
+        blocks.push({ key: teacher, tuples: tuples });
+        r += 2;
+      } else {
+        r += 1;
       }
-      blocks.push({ key: key, tuples: tuples });
     }
     return { blocks: blocks, dayList: dayList };
   }
@@ -1152,25 +1162,13 @@
   }
 
   // ---------- cross validation ----------
-  function crossValidate(classBlocks) {
+  function crossValidateTeacherNames() {
     var subjTeacherNames = Object.keys(STATE.teacherSubjects);
     var scheduleTeacherNames = STATE.teacherNames;
     var onlyInSchedule = scheduleTeacherNames.filter(function (n) { return subjTeacherNames.indexOf(n) === -1; });
     var onlyInSubjects = subjTeacherNames.filter(function (n) { return scheduleTeacherNames.indexOf(n) === -1; });
-    if (onlyInSchedule.length) console.warn('[검증] 교사별 시간표에만 있는 교사명:', onlyInSchedule);
+    if (onlyInSchedule.length) console.warn('[검증] 전체 교사 시간표에만 있는 교사명:', onlyInSchedule);
     if (onlyInSubjects.length) console.warn('[검증] 교사_담당교과에만 있는 교사명:', onlyInSubjects);
-
-    classBlocks.forEach(function (block) {
-      block.tuples.forEach(function (t) {
-        if (t.subject === '창체') return;
-        var rec = getRecord(STATE.classScheduleMap, block.key, t.day, t.period);
-        if (!rec) {
-          console.warn('[검증] 학급별 시간표에는 있으나 교사별 시간표 파생 데이터에 없음:', block.key, t.day, t.period, t.subject);
-        } else if (rec.subject !== t.subject) {
-          console.warn('[검증] 과목 불일치:', block.key, t.day, t.period, '학급별=' + t.subject, '교사별파생=' + rec.subject);
-        }
-      });
-    });
   }
 
   // ---------- init ----------
@@ -1190,8 +1188,7 @@
         STATE.settings = parseSettings(sheetRows('설정'));
         STATE.teacherSubjects = parseTeacherSubjects(sheetRows('교사_담당교과'));
 
-        var teacherParsed = parseBlockSheet(sheetRows('교사별 시간표'));
-        var classParsed = parseBlockSheet(sheetRows('학급별 시간표'));
+        var teacherParsed = parseMatrixSheet(sheetRows('전체 교사 시간표'));
 
         STATE.dayList = teacherParsed.dayList || ['월', '화', '수', '목', '금'];
         STATE.records = buildTeacherRecords(teacherParsed.blocks);
@@ -1202,7 +1199,7 @@
         STATE.teacherNames = Object.keys(STATE.teacherScheduleMap);
         STATE.weekSlots = allWeekSlots(STATE.dayList);
 
-        crossValidate(classParsed.blocks);
+        crossValidateTeacherNames();
 
         renderTitle();
         renderTeacherOptions();

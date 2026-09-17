@@ -437,6 +437,11 @@ table.mini-board .cell-move .cell-btn::before {
   padding: 20px 18px;
   min-height: 120px;
   height: 100%;
+  /* 진짜 고정 상한. 이게 없으면 후보가 많아질 때 height:100%가 커지는 대로
+     align-items:stretch가 왼쪽 시간표까지 같이 늘려버려서 스크롤이 걸릴 일이 없어진다
+     (페이지 전체가 그냥 다같이 커짐) — max-height로 여기서 멈추게 해야 그 안의
+     .cand-list가 내부 스크롤을 맡을 수 있다. 왼쪽 시간표(7교시) 높이와 비슷한 값. */
+  max-height: 550px;
   display: flex;
   flex-direction: column;
   font-size: 0.95rem;

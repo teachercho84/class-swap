@@ -855,7 +855,11 @@ function makeCandListItem(whoText, whereText, onSelect, entry, label) {
         if (prev) prev.classList.remove('is-selected');
       }
       btn.classList.add('is-selected');
-      onSelect();
+      // "대체 찾기"(수동/자동) 진행 중에는 슬롯별 좌우 미리보기 스트립이 아래
+      // 전체 시간표(manualAssignBoards/autoAssignBoards)와 내용이 겹치므로 생략한다.
+      // 결근 등록 없이 그리드에서 칸 하나를 바로 클릭한 단발성 사용(총 개수 0)에서는
+      // 그 미리보기가 유일한 확인 수단이라 그대로 보여준다.
+      if (!manualAssignState.total) onSelect();
       commitManualSelection(lastSelectedCtx, entry, label); // "수동으로 대체 찾기" 진행 기록 + 작업 사본 반영
     });
     li.appendChild(btn);

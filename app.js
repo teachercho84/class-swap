@@ -187,6 +187,7 @@ function wireAbsencePanel() {
   document.getElementById('absenceSaveBtn').addEventListener('click', handleSaveAbsence);
   document.getElementById('autoAssignBtn').addEventListener('click', runAutoAssign);
   document.getElementById('manualAssignBtn').addEventListener('click', renderManualAssignList);
+  document.getElementById('assignResetBtn').addEventListener('click', clearResults);
 
   var allBox = document.getElementById('absencePeriodAll');
   var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');
@@ -369,10 +370,9 @@ function buildScheduleCard(title, teacher, dayDiff) {
 }
 
 function runAutoAssign() {
+  clearResults(); // 수동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
   var listEl = document.getElementById('autoAssignResults');
   var boardsEl = document.getElementById('autoAssignBoards');
-  listEl.innerHTML = '';
-  boardsEl.innerHTML = '';
 
   var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
   if (affected.length === 0) {
@@ -425,10 +425,8 @@ var manualAssignState = { total: 0, diffsByCtxKey: {} };
 // 없음). 후보를 실제로 선택하면 recordManualResolution이 그 항목에 체크 표시를 남기고
 // diff를 기록한다 — 전부 끝나면 전체 시간표를 보여준다.
 function renderManualAssignList() {
+  clearResults(); // 자동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
   var listEl = document.getElementById('manualAssignResults');
-  var boardsEl = document.getElementById('manualAssignBoards');
-  listEl.innerHTML = '';
-  boardsEl.innerHTML = '';
 
   var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
   manualAssignState = { total: affected.length, diffsByCtxKey: {} };

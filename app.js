@@ -302,20 +302,60 @@ function buildNormalSwapEntry(ctx, c, absences) {
   };
 }
 
-function buildSetSwapEntry(ctx, s, absences) {
+// 멤버 배열 안에서 ctx(본인) 항목을 맨 앞으로 옮긴다 — 여러 교사가 한꺼번에 바뀔 때
+// diff 배열도 이 순서를 따르므로, 나중에 diffsByTeacher에 쌓일 때 본인 카드가 항상
+// 맨 앞에 오게 된다.
+function orderWithSelfFirst(members, teacherName) {
+  return members.slice().sort(function (a, b) {
+    var aMine = a.teacher === teacherName;
+    var bMine = b.teacher === teacherName;
+    if (aMine && !bMine) return -1;
+    if (!aMine && bMine) return 1;
+    return 0;
+  });
+}
+
+// 세트간 교체는 세트 A 전체(ctx 포함 여러 명일 수 있음)와 세트 B 전체가 통째로 서로의
+// 시간대로 맞바꾸는 것이다(selectMoveSetSwap의 미리보기가 이미 이렇게 보여준다) — 그래서
+// 배정을 실제로 반영/기록할 때도 ctx 한 명이 아니라 두 세트 전원의 변화를 다뤄야 한다.
+function buildSetSwapEntry(ctx, groupA, s, absences) {
+  var orderedA = orderWithSelfFirst(groupA.members, ctx.teacher);
+  var membersB = s.otherMembers;
+  var diffs = [];
+  orderedA.forEach(function (m) {
+    diffs = diffs.concat(buildRelocateDiff(
+      { teacher: m.teacher, day: ctx.day, period: ctx.period, subject: m.subject, className: m.className },
+      s.targetDay, s.targetPeriod
+    ));
+  });
+  membersB.forEach(function (m) {
+    diffs = diffs.concat(buildRelocateDiff(
+      { teacher: m.teacher, day: s.targetDay, period: s.targetPeriod, subject: m.subject, className: m.className },
+      ctx.day, ctx.period
+    ));
+  });
   return {
     validate: function (tm, cm) {
       var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, tm, cm, absences).setSwaps;
       return setSwaps.some(function (x) { return x.otherGroupId === s.otherGroupId && x.targetDay === s.targetDay && x.targetPeriod === s.targetPeriod; });
     },
-    apply: function (tm, cm) { applyRelocateToWorkingMaps(tm, cm, ctx, s.targetDay, s.targetPeriod); },
-    diffs: buildRelocateDiff(ctx, s.targetDay, s.targetPeriod)
+    apply: function (tm, cm) {
+      orderedA.forEach(function (m) {
+        applyRelocateToWorkingMaps(tm, cm, { teacher: m.teacher, day: ctx.day, period: ctx.period, subject: m.subject, className: m.className }, s.targetDay, s.targetPeriod);
+      });
+      membersB.forEach(function (m) {
+        applyRelocateToWorkingMaps(tm, cm, { teacher: m.teacher, day: s.targetDay, period: s.targetPeriod, subject: m.subject, className: m.className }, ctx.day, ctx.period);
+      });
+    },
+    diffs: diffs
   };
 }
 
 function buildComboEntry(ctx, groupA, combo, absences) {
+  var orderedPairs = orderWithSelfFirst(combo.pairs.map(function (p) { return p.member; }), ctx.teacher)
+    .map(function (member) { return combo.pairs.filter(function (p) { return p.member === member; })[0]; });
   var comboDiffs = [];
-  combo.pairs.forEach(function (p) {
+  orderedPairs.forEach(function (p) {
     comboDiffs = comboDiffs.concat(buildSwapDiff(
       { teacher: p.member.teacher, day: ctx.day, period: ctx.period, subject: p.member.subject, className: p.member.className },
       { teacher: p.candidate.teacher, day: p.candidate.day, period: p.candidate.period, subject: p.candidate.subject, className: p.candidate.className }
@@ -334,7 +374,7 @@ function buildComboEntry(ctx, groupA, combo, absences) {
       });
     },
     apply: function (tm, cm) {
-      combo.pairs.forEach(function (p) {
+      orderedPairs.forEach(function (p) {
         applySwapToWorkingMaps(tm, cm,
           { teacher: p.member.teacher, day: ctx.day, period: ctx.period, subject: p.member.subject, className: p.member.className },
           { teacher: p.candidate.teacher, day: p.candidate.day, period: p.candidate.period, subject: p.candidate.subject, className: p.candidate.className }
@@ -364,10 +404,10 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
       var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
       var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, teacherMap, classMap, absences).setSwaps;
       if (setSwaps.length > 0) {
-        // 세트간 교체는 ctx 본인만 이동시키는 단순화라(2부 참고) 상대 후보 교사가
-        // 없어 부담 비교 대상이 없다 — 그대로 첫 옵션을 쓴다.
+        // 세트간 교체는 상대 후보 교사가 없어(세트 대 세트 이동이라 1:1 대응이 없음)
+        // 부담 비교 대상이 없다 — 그대로 첫 옵션을 쓴다.
         var s = setSwaps[0];
-        var entryS = buildSetSwapEntry(ctx, s, absences);
+        var entryS = buildSetSwapEntry(ctx, groupA, s, absences);
         entryS.apply(teacherMap, classMap);
         return {
           text: '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동',
@@ -738,6 +778,7 @@ function maybeRenderManualAssignBoards(conflicts) {
   }
   clearManualConflictBanner();
   if (Object.keys(manualAssignState.diffsByCtxKey).length === manualAssignState.total) {
+    hidePreview(); // 방금 마지막 슬롯의 미리보기 스트립이 전체 시간표와 내용이 겹치므로 접는다
     renderManualAssignBoards();
   }
 }
@@ -855,11 +896,12 @@ function makeCandListItem(whoText, whereText, onSelect, entry, label) {
         if (prev) prev.classList.remove('is-selected');
       }
       btn.classList.add('is-selected');
-      // "대체 찾기"(수동/자동) 진행 중에는 슬롯별 좌우 미리보기 스트립이 아래
-      // 전체 시간표(manualAssignBoards/autoAssignBoards)와 내용이 겹치므로 생략한다.
-      // 결근 등록 없이 그리드에서 칸 하나를 바로 클릭한 단발성 사용(총 개수 0)에서는
-      // 그 미리보기가 유일한 확인 수단이라 그대로 보여준다.
-      if (!manualAssignState.total) onSelect();
+      // "대체 찾기"(수동/자동) 진행 중에도 슬롯 하나를 고를 때마다 그 슬롯과 관련된
+      // 교사만 좌우로 보여주는 미리보기 스트립을 띄운다 — 다음 슬롯을 열면
+      // handleCellClick이 hidePreview()로 접고, 마지막 슬롯까지 다 채워지면
+      // maybeRenderManualAssignBoards가 전체 시간표를 그리기 직전에 다시 접어서
+      // 전체 결과와 내용이 겹치지 않게 한다.
+      onSelect();
       commitManualSelection(lastSelectedCtx, entry, label); // "수동으로 대체 찾기" 진행 기록 + 작업 사본 반영
     });
     li.appendChild(btn);
@@ -941,7 +983,7 @@ function renderResults(ctx, tier, data) {
     var items0 = [];
     data.setSwaps.forEach(function (s) {
       var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
-      var entryS = buildSetSwapEntry(ctx, s, absences);
+      var entryS = buildSetSwapEntry(ctx, groupA, s, absences);
       var labelS = '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동';
       items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
         selectMoveSetSwap(ctx, groupA, s);

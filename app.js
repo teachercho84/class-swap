@@ -182,9 +182,9 @@ function handleAddAbsence() {
   clearResults();
 }
 
-// 초기화 버튼: 대체 배정 결과, 결근 등록 폼의 요일/교시 선택, 그리고 현재 교사에
-// 추가해둔 결근 태그까지 전부 비운다. removeAbsenceDay와 마찬가지로 저장하기 전까지는
-// storage에 반영하지 않는다 — 저장된 값은 저장하기를 눌러야 지워진다.
+// 초기화 버튼: 현재 교사에 대해 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과,
+// 결근 등록 폼의 요일/교시 선택, 추가해둔 결근 태그, 그리고 저장하기로 이미 저장된
+// 값까지 전부 지우고 storage에도 반영한다.
 function resetAssignPanel() {
   clearResults();
   document.getElementById('absenceDaySelect').selectedIndex = 0;
@@ -194,6 +194,7 @@ function resetAssignPanel() {
   });
   STATE.absencesByTeacher[STATE.currentTeacher] = [];
   renderAbsenceTags();
+  saveAbsencesToStorage();
 }
 
 function wireAbsencePanel() {

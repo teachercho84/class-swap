@@ -582,6 +582,14 @@ function rebuildManualWorkingMaps(excludeKey) {
   return { teacherMap: teacherMap, classMap: classMap, conflicts: conflicts };
 }
 
+// 슬롯 행을 클릭한 것과 완전히 동일하게 동작한다(handleCellClick 재사용) — 행 클릭
+// 핸들러뿐 아니라 선택 해제 직후 그 슬롯을 바로 다시 여는 데도 쓴다.
+function openManualSlot(ctx) {
+  var cellEl = document.querySelector('#boardTable td[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
+  var rec = getRecord(STATE.teacherScheduleMap, ctx.teacher, ctx.day, ctx.period);
+  if (cellEl && rec) handleCellClick(rec, cellEl);
+}
+
 // "수동으로 대체 찾기"·"자동으로 대체 찾기" 둘 다 영향받는 수업을 이 목록으로 보여준다.
 // 각 행을 클릭하면 그리드에서 그 칸을 직접 클릭한 것과 동일하게 동작한다
 // (handleCellClick 재사용 — 새 로직 없음). 자동 배정 직후에도 이 목록이 그대로
@@ -634,14 +642,9 @@ function renderAffectedSlotList(affected) {
     });
     row.appendChild(unresolveBtn);
 
-    function openSlot() {
-      var cellEl = document.querySelector('#boardTable td[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
-      var rec = getRecord(STATE.teacherScheduleMap, ctx.teacher, ctx.day, ctx.period);
-      if (cellEl && rec) handleCellClick(rec, cellEl);
-    }
-    row.addEventListener('click', openSlot);
+    row.addEventListener('click', function () { openManualSlot(ctx); });
     row.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSlot(); }
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openManualSlot(ctx); }
     });
 
     listEl.appendChild(row);
@@ -754,7 +757,7 @@ function unresolveManualSlot(ctx) {
     if (outcome) { outcome.textContent = ''; outcome.classList.remove('manual-assign-outcome-empty'); }
   }
   renderManualConflictBadges(working.conflicts);
-  refreshOpenSidePanelIfStale(null);
+  openManualSlot(ctx); // 선택 해제한 슬롯을 바로 활성화해 다시 고를 수 있게 한다
   maybeRenderManualAssignBoards(working.conflicts);
 }
 

@@ -43,6 +43,7 @@ function renderTeacherOptions() {
     STATE.currentTeacher = sel.value;
     renderGrid();
     clearResults();
+    resetAbsenceForm();
     renderAbsenceTags();
   });
   if (STATE.teacherNames.length) {
@@ -100,22 +101,6 @@ function saveAbsencesToStorage() {
   localStorage.setItem(ABSENCE_STORAGE_KEY, JSON.stringify(STATE.absencesByTeacher));
 }
 
-// localStorage.setItem은 아무 화면 반응이 없어서 눌렀는지 안 눌렀는지 헷갈리므로,
-// 버튼 라벨을 잠깐 "저장됨"으로 바꿔 눌렸다는 걸 눈에 보이게 한다.
-function handleSaveAbsence() {
-  saveAbsencesToStorage();
-  var btn = document.getElementById('absenceSaveBtn');
-  if (btn.dataset.resetTimer) clearTimeout(Number(btn.dataset.resetTimer));
-  var original = btn.dataset.originalLabel || btn.textContent;
-  btn.dataset.originalLabel = original;
-  btn.textContent = '저장됨 ✓';
-  var timer = setTimeout(function () {
-    btn.textContent = original;
-    delete btn.dataset.resetTimer;
-  }, 1500);
-  btn.dataset.resetTimer = String(timer);
-}
-
 function renderAbsenceDayOptions() {
   var sel = document.getElementById('absenceDaySelect');
   sel.innerHTML = '';
@@ -164,6 +149,7 @@ function removeAbsenceDay(day) {
   STATE.absencesByTeacher[STATE.currentTeacher] = list.filter(function (a) { return a.day !== day; });
   renderAbsenceTags();
   clearResults();
+  saveAbsencesToStorage();
 }
 
 function handleAddAbsence() {
@@ -181,18 +167,26 @@ function handleAddAbsence() {
   });
   renderAbsenceTags();
   clearResults();
+  saveAbsencesToStorage();
 }
 
-// 초기화 버튼: 현재 교사에 대해 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과,
-// 결근 등록 폼의 요일/교시 선택, 추가해둔 결근 태그, 그리고 저장하기로 이미 저장된
-// 값까지 전부 지우고 storage에도 반영한다.
-function resetAssignPanel() {
-  clearResults();
+// 결근 등록 폼(요일 select + 교시 체크박스)만 처음 상태로 되돌린다 — 등록된 결근
+// 데이터(STATE.absencesByTeacher)는 건드리지 않는다. 교사 전환 시 이전 교사가
+// 선택해두었던 폼 상태가 그대로 남아 보이는 것을 막기 위해 쓰인다.
+function resetAbsenceForm() {
   document.getElementById('absenceDaySelect').selectedIndex = 0;
   document.getElementById('absencePeriodAll').checked = false;
   document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]').forEach(function (cb) {
     cb.checked = false;
   });
+}
+
+// 초기화 버튼: 현재 교사에 대해 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과,
+// 결근 등록 폼의 요일/교시 선택, 추가해둔 결근 태그, 그리고 storage에 저장된 값까지
+// 전부 지운다.
+function resetAssignPanel() {
+  clearResults();
+  resetAbsenceForm();
   STATE.absencesByTeacher[STATE.currentTeacher] = [];
   renderAbsenceTags();
   saveAbsencesToStorage();
@@ -200,7 +194,6 @@ function resetAssignPanel() {
 
 function wireAbsencePanel() {
   document.getElementById('absenceAddBtn').addEventListener('click', handleAddAbsence);
-  document.getElementById('absenceSaveBtn').addEventListener('click', handleSaveAbsence);
   document.getElementById('autoAssignBtn').addEventListener('click', runAutoAssign);
   document.getElementById('manualAssignBtn').addEventListener('click', renderManualAssignList);
   document.getElementById('assignResetBtn').addEventListener('click', resetAssignPanel);

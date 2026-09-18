@@ -226,7 +226,7 @@ select#teacherSelect:focus-visible {
 #assignResetBtn {
   background: var(--free);
   color: var(--ink-soft);
-  margin-left: auto; /* 이 버튼부터(초기화+수동+자동) 저장하기 옆 줄에서 오른쪽 끝으로 밀어낸다 */
+  margin-left: auto; /* 이 버튼부터(초기화+수동+자동) 추가 옆 줄에서 오른쪽 끝으로 밀어낸다 */
 }
 #manualAssignBtn { background: var(--free); color: var(--ink); }
 #autoAssignBtn { background: var(--accent); color: var(--accent-ink); }

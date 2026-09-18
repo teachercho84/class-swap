@@ -182,12 +182,22 @@ function handleAddAbsence() {
   clearResults();
 }
 
+// 초기화 버튼: 대체 배정 결과뿐 아니라 결근 등록 폼에 남아있는 요일/교시 선택도 비운다.
+function resetAssignPanel() {
+  clearResults();
+  document.getElementById('absenceDaySelect').selectedIndex = 0;
+  document.getElementById('absencePeriodAll').checked = false;
+  document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]').forEach(function (cb) {
+    cb.checked = false;
+  });
+}
+
 function wireAbsencePanel() {
   document.getElementById('absenceAddBtn').addEventListener('click', handleAddAbsence);
   document.getElementById('absenceSaveBtn').addEventListener('click', handleSaveAbsence);
   document.getElementById('autoAssignBtn').addEventListener('click', runAutoAssign);
   document.getElementById('manualAssignBtn').addEventListener('click', renderManualAssignList);
-  document.getElementById('assignResetBtn').addEventListener('click', clearResults);
+  document.getElementById('assignResetBtn').addEventListener('click', resetAssignPanel);
 
   var allBox = document.getElementById('absencePeriodAll');
   var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');

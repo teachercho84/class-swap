@@ -73,6 +73,7 @@ function clearResults() {
   var manualBoardsEl = document.getElementById('manualAssignBoards');
   if (manualBoardsEl) manualBoardsEl.innerHTML = '';
   manualAssignState = { total: 0, diffsByCtxKey: {} };
+  manualWorkingState = { order: [], byKey: {}, teacherMap: null, classMap: null, conflicts: [] };
 }
 
 // ---------- 출장·결근 관리 ----------
@@ -211,12 +212,13 @@ function wireAbsencePanel() {
   });
 }
 
-// ---------- 결근 자동 배정 ----------
-// 등록된 결근 요일·교시에 걸리는 현재 교사의 수업을 전부 찾아, 각각 맞교체·이동수업
-// (preferSubstitute면 대강부터)·대강 순으로 맨 처음 후보를 자동 선택해 한 번에
-// 보여준다. 이 앱은 실제로 저장/반영하지 않으므로 결과는 화면 요약일 뿐이고, STATE의
-// 진짜 스케줄 맵은 건드리지 않는다 — 이번 배치 계산 전용 사본(teacherMap/classMap)에만
-// 반영해가며 다음 수업을 찾는다(안 그러면 같은 사람이 두 자리에 겹쳐 배정될 수 있음).
+// ---------- 결근 자동/수동 배정 ----------
+// 등록된 결근 요일·교시에 걸리는 현재 교사의 수업을 전부 찾아 슬롯 목록으로 보여준다.
+// 자동 배정은 각 슬롯의 첫 후보를 곧바로 골라주고, 수동 배정은 사용자가 슬롯을 클릭해
+// 직접 후보를 고른다 — 어느 쪽이든 실제 STATE 스케줄 맵은 건드리지 않고, 이번 배치
+// 전용 작업 사본(manualWorkingState)에만 반영해가며 다음 슬롯을 계산한다. 그래서 슬롯
+// 하나의 선택이 다른 슬롯(먼저 확정됐든, 자동으로 채워졌든)의 후보 계산에도 그대로
+// 반영되고, 나중 편집으로 이전 선택이 더 이상 유효하지 않게 되면 충돌(⚠)로 표시된다.
 function findAbsenceAffectedClasses(teacher) {
   var absences = STATE.absencesByTeacher[teacher] || [];
   var result = [];
@@ -256,12 +258,6 @@ function pickLeastLoaded(items, teacherMap, day, getTeacherName) {
   return best;
 }
 
-// 한 수업(ctx)의 대체를 찾아 사본(teacherMap/classMap)에 반영하고, 화면에 보여줄
-// 설명 문구를 돌려준다(후보가 전혀 없으면 null).
-// 반환값은 { text, diffs } — text는 목록에 보여줄 문구(후보 없으면 null), diffs는
-// "누구의 어느 칸이 어떻게 바뀌는지"(preview.js의 removals/additions/covered와 같은
-// 뜻의 added/removed/covered)를 담아, 배정이 다 끝난 뒤 관련 교사들의 전체 시간표를
-// 그려서 눈으로 확인할 수 있게 한다.
 // 세 가지 diff 모양 — 자동 배정과 수동 선택(아래 renderResults)이 공유한다.
 // a, b: { teacher, day, period, subject, className }.
 function buildSwapDiff(a, b) {
@@ -285,6 +281,83 @@ function buildSubstituteDiff(ctx, substituteTeacher) {
   ];
 }
 
+// ---------- 슬롯 선택을 작업 사본에 적용/검증하는 공용 factory ----------
+// 각 factory는 { validate(tm,cm), apply(tm,cm), diffs }를 돌려준다. validate는 이
+// 선택이 주어진 작업 사본 기준으로 "아직도 유효한 후보인지"를 원래 찾기에 썼던
+// find* 함수를 그대로 재실행해서 확인한다 — 검증 로직을 따로 두지 않고 탐색
+// 로직 자체를 진실의 근원으로 재사용한다. apply는 matching.js의 기존
+// working-copy 헬퍼를 그대로 쓴다. 자동 배정(resolveAutoAssignFor)과 수동 선택
+// (renderResults)이 이 네 factory를 동일하게 사용해 두 흐름이 같은 작업 사본
+// 상태(manualWorkingState)를 공유할 수 있게 한다.
+function buildNormalSwapEntry(ctx, c, absences) {
+  var a = { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className };
+  var b = { teacher: c.teacher, day: c.day, period: c.period, subject: c.subject, className: c.className };
+  return {
+    validate: function (tm, cm) {
+      var cands = findNormalSwapCandidates(ctx, tm, STATE.teacherNames, STATE.weekSlots, absences);
+      return cands.some(function (x) { return x.teacher === c.teacher && x.day === c.day && x.period === c.period; });
+    },
+    apply: function (tm, cm) { applySwapToWorkingMaps(tm, cm, a, b); },
+    diffs: buildSwapDiff(a, b)
+  };
+}
+
+function buildSetSwapEntry(ctx, s, absences) {
+  return {
+    validate: function (tm, cm) {
+      var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, tm, cm, absences).setSwaps;
+      return setSwaps.some(function (x) { return x.otherGroupId === s.otherGroupId && x.targetDay === s.targetDay && x.targetPeriod === s.targetPeriod; });
+    },
+    apply: function (tm, cm) { applyRelocateToWorkingMaps(tm, cm, ctx, s.targetDay, s.targetPeriod); },
+    diffs: buildRelocateDiff(ctx, s.targetDay, s.targetPeriod)
+  };
+}
+
+function buildComboEntry(ctx, groupA, combo, absences) {
+  var comboDiffs = [];
+  combo.pairs.forEach(function (p) {
+    comboDiffs = comboDiffs.concat(buildSwapDiff(
+      { teacher: p.member.teacher, day: ctx.day, period: ctx.period, subject: p.member.subject, className: p.member.className },
+      { teacher: p.candidate.teacher, day: p.candidate.day, period: p.candidate.period, subject: p.candidate.subject, className: p.candidate.className }
+    ));
+  });
+  return {
+    validate: function (tm, cm) {
+      var combos = findMoveComboCandidates(ctx, groupA, tm, STATE.teacherNames, STATE.weekSlots, absences);
+      return combos.some(function (x) {
+        if (x.targetDay !== combo.targetDay || x.targetPeriod !== combo.targetPeriod) return false;
+        return combo.pairs.every(function (origPair) {
+          return x.pairs.some(function (newPair) {
+            return newPair.member.teacher === origPair.member.teacher && newPair.candidate.teacher === origPair.candidate.teacher;
+          });
+        });
+      });
+    },
+    apply: function (tm, cm) {
+      combo.pairs.forEach(function (p) {
+        applySwapToWorkingMaps(tm, cm,
+          { teacher: p.member.teacher, day: ctx.day, period: ctx.period, subject: p.member.subject, className: p.member.className },
+          { teacher: p.candidate.teacher, day: p.candidate.day, period: p.candidate.period, subject: p.candidate.subject, className: p.candidate.className }
+        );
+      });
+    },
+    diffs: comboDiffs
+  };
+}
+
+function buildSubstituteEntry(ctx, teacher, tier) {
+  return {
+    validate: function (tm, cm) {
+      var cands = tier === 2
+        ? findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, tm, STATE.teacherNames)
+        : findFallbackSubstituteCandidates(ctx, tm, STATE.teacherNames);
+      return cands.some(function (x) { return x.teacher === teacher; });
+    },
+    apply: function (tm, cm) { applySubstituteToWorkingMaps(tm, ctx, teacher); },
+    diffs: buildSubstituteDiff(ctx, teacher)
+  };
+}
+
 function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
   if (!STATE.preferSubstitute) {
     if (ctx.moveGroupId) {
@@ -294,10 +367,12 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         // 세트간 교체는 ctx 본인만 이동시키는 단순화라(2부 참고) 상대 후보 교사가
         // 없어 부담 비교 대상이 없다 — 그대로 첫 옵션을 쓴다.
         var s = setSwaps[0];
-        applyRelocateToWorkingMaps(teacherMap, classMap, ctx, s.targetDay, s.targetPeriod);
+        var entryS = buildSetSwapEntry(ctx, s, absences);
+        entryS.apply(teacherMap, classMap);
         return {
           text: '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동',
-          diffs: buildRelocateDiff(ctx, s.targetDay, s.targetPeriod)
+          diffs: entryS.diffs,
+          entry: entryS
         };
       }
       var combos = findMoveComboCandidates(ctx, groupA, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
@@ -307,33 +382,24 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
       }).filter(function (x) { return x; });
       if (relevantCombos.length > 0) {
         var picked = pickLeastLoaded(relevantCombos, teacherMap, ctx.day, function (x) { return x.pair.candidate.teacher; });
-        var pair = picked.pair;
-        applySwapToWorkingMaps(teacherMap, classMap,
-          { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: pair.member.subject, className: pair.member.className },
-          { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, subject: pair.candidate.subject, className: pair.candidate.className }
-        );
+        var entryC = buildComboEntry(ctx, groupA, picked.combo, absences);
+        entryC.apply(teacherMap, classMap);
         return {
-          text: pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + pair.candidate.day + '요일 ' + pair.candidate.period + '교시)',
-          diffs: buildSwapDiff(
-            { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: pair.member.subject, className: pair.member.className },
-            { teacher: pair.candidate.teacher, day: pair.candidate.day, period: pair.candidate.period, subject: pair.candidate.subject, className: pair.candidate.className }
-          )
+          text: picked.pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + picked.pair.candidate.day + '요일 ' + picked.pair.candidate.period + '교시)',
+          diffs: entryC.diffs,
+          entry: entryC
         };
       }
     } else {
       var normal = findNormalSwapCandidates(ctx, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
       if (normal.length > 0) {
         var c = pickLeastLoaded(normal, teacherMap, ctx.day, function (x) { return x.teacher; });
-        applySwapToWorkingMaps(teacherMap, classMap,
-          { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className },
-          { teacher: c.teacher, day: c.day, period: c.period, subject: c.subject, className: c.className }
-        );
+        var entryN = buildNormalSwapEntry(ctx, c, absences);
+        entryN.apply(teacherMap, classMap);
         return {
           text: c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)',
-          diffs: buildSwapDiff(
-            { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className },
-            { teacher: c.teacher, day: c.day, period: c.period, subject: c.subject, className: c.className }
-          )
+          diffs: entryN.diffs,
+          entry: entryN
         };
       }
     }
@@ -342,16 +408,18 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
   var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, teacherMap, STATE.teacherNames);
   if (tier2.length > 0) {
     var pick2 = pickLeastLoaded(tier2, teacherMap, ctx.day, function (x) { return x.teacher; });
-    applySubstituteToWorkingMaps(teacherMap, ctx, pick2.teacher);
-    return { text: pick2.teacher + ' 교사 (대강)', diffs: buildSubstituteDiff(ctx, pick2.teacher) };
+    var entry2 = buildSubstituteEntry(ctx, pick2.teacher, 2);
+    entry2.apply(teacherMap, classMap);
+    return { text: pick2.teacher + ' 교사 (대강)', diffs: entry2.diffs, entry: entry2 };
   }
   var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames);
   if (tier3.length > 0) {
     var pick3 = pickLeastLoaded(tier3, teacherMap, ctx.day, function (x) { return x.teacher; });
-    applySubstituteToWorkingMaps(teacherMap, ctx, pick3.teacher);
-    return { text: pick3.teacher + ' 교사 (대강, 참고용)', diffs: buildSubstituteDiff(ctx, pick3.teacher) };
+    var entry3 = buildSubstituteEntry(ctx, pick3.teacher, 3);
+    entry3.apply(teacherMap, classMap);
+    return { text: pick3.teacher + ' 교사 (대강, 참고용)', diffs: entry3.diffs, entry: entry3 };
   }
-  return { text: null, diffs: [] };
+  return { text: null, diffs: [], entry: null };
 }
 
 // diffsByTeacher의 { 'day_period': {type, subject?, className?} } 하나를 교사 이름을
@@ -384,50 +452,55 @@ function buildScheduleCard(title, teacher, dayDiff) {
   return col;
 }
 
+// 자동/수동 배정 결과 화면이 각각 자기 컨테이너(#autoAssignResults/#autoAssignBoards
+// vs #manualAssignResults/#manualAssignBoards)를 갖지만, 슬롯 목록·후보 선택·작업
+// 사본 갱신 로직은 완전히 동일하므로 "지금 어느 화면이 활성 상태인지"만 이 변수로
+// 구분해서 공용 함수들이 알맞은 DOM에 렌더링하게 한다.
+var ASSIGN_SURFACES = {
+  manual: { results: 'manualAssignResults', boards: 'manualAssignBoards' },
+  auto: { results: 'autoAssignResults', boards: 'autoAssignBoards' }
+};
+var activeAssignSurface = 'manual';
+
 function runAutoAssign() {
   clearResults(); // 수동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
-  var listEl = document.getElementById('autoAssignResults');
-  var boardsEl = document.getElementById('autoAssignBoards');
+  activeAssignSurface = 'auto';
 
   var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
-  if (affected.length === 0) {
-    var empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.textContent = '등록된 결근에 해당하는 수업이 없습니다.';
-    listEl.appendChild(empty);
-    return;
-  }
+  manualAssignState = { total: affected.length, diffsByCtxKey: {} };
+  renderAffectedSlotList(affected);
+  if (affected.length === 0) return;
 
   var absences = currentAbsences();
   var teacherMap = cloneScheduleMap(STATE.teacherScheduleMap);
   var classMap = cloneScheduleMap(STATE.classScheduleMap);
-  var diffsByTeacher = {};
 
+  // 결근에 걸리는 수업을 순서대로 하나씩 자동 배정하되, 앞에서 확정한 선택을
+  // teacherMap/classMap 사본에 반영해가며 다음 수업을 찾는다(같은 사람이 두 자리에
+  // 겹쳐 배정되는 걸 방지). 이렇게 순차적으로 쌓은 결과를 그대로 manualWorkingState의
+  // "정본" 순서·사본으로 삼는다 — 이후 사용자가 특정 슬롯만 골라 수동으로 바꿔도
+  // (아래 renderAffectedSlotList의 행 클릭 → commitManualSelection) 같은 사본을
+  // 이어서 갱신하므로 자동/수동 어느 쪽으로 채워졌든 서로 영향을 주고받는다.
   affected.forEach(function (ctx) {
     var result = resolveAutoAssignFor(ctx, absences, teacherMap, classMap);
-
-    var row = document.createElement('div');
-    row.className = 'auto-assign-row';
-    var label = document.createElement('div');
-    label.className = 'auto-assign-label';
-    label.textContent = ctx.day + '요일 ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '');
-    row.appendChild(label);
-    var outcome = document.createElement('div');
-    outcome.className = 'auto-assign-outcome' + (result.text ? '' : ' auto-assign-outcome-empty');
-    outcome.textContent = '→ ' + (result.text || '후보 없음');
-    row.appendChild(outcome);
-    listEl.appendChild(row);
-
-    result.diffs.forEach(function (d) {
-      if (!diffsByTeacher[d.teacher]) diffsByTeacher[d.teacher] = {};
-      diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type, subject: d.subject, className: d.className };
-    });
+    var key = ctx.day + '_' + ctx.period;
+    manualWorkingState.order.push(key);
+    if (result.entry) {
+      manualWorkingState.byKey[key] = { ctx: ctx, validate: result.entry.validate, apply: result.entry.apply, diffs: result.diffs, label: result.text, conflicted: false, source: 'auto' };
+      manualAssignState.diffsByCtxKey[key] = result.diffs;
+      markManualAssignResolved(ctx, result.text);
+    } else {
+      manualWorkingState.byKey[key] = { ctx: ctx, validate: function () { return false; }, apply: function () {}, diffs: [], label: null, conflicted: true, source: 'auto' };
+      markManualAssignOutcome(ctx, '후보 없음', true);
+    }
   });
 
-  Object.keys(diffsByTeacher).forEach(function (teacher) {
-    var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
-    boardsEl.appendChild(buildScheduleCard(title, teacher, diffsByTeacher[teacher]));
-  });
+  manualWorkingState.teacherMap = teacherMap;
+  manualWorkingState.classMap = classMap;
+  manualWorkingState.conflicts = manualWorkingState.order.filter(function (key) { return manualWorkingState.byKey[key].conflicted; });
+
+  renderManualConflictBadges(manualWorkingState.conflicts);
+  maybeRenderManualAssignBoards(manualWorkingState.conflicts);
 }
 
 // 수동 모드 진행 상황 — 영향받는 수업 총 개수와, 지금까지 실제로 후보를 선택한
@@ -435,16 +508,47 @@ function runAutoAssign() {
 // 모드와 같은 방식으로 반영된 전체 시간표 카드를 그린다.
 var manualAssignState = { total: 0, diffsByCtxKey: {} };
 
-// "수동으로 대체 찾기": 영향받는 수업을 목록으로 보여주고, 하나를 클릭하면 그리드에서
-// 그 칸을 직접 클릭한 것과 완전히 동일하게 동작한다(handleCellClick 재사용 — 새 로직
-// 없음). 후보를 실제로 선택하면 recordManualResolution이 그 항목에 체크 표시를 남기고
-// diff를 기록한다 — 전부 끝나면 전체 시간표를 보여준다.
-function renderManualAssignList() {
-  clearResults(); // 자동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
-  var listEl = document.getElementById('manualAssignResults');
+// 슬롯 간 상호 반영 + 충돌 감지용 작업 사본 상태. order는 슬롯이 "최초로" 확정된
+// 순서를 고정 보관(자동 배정이면 배정 순서, 수동이면 사용자가 처음 고른 순서) —
+// 나중에 어떤 슬롯의 선택을 바꿔도 이 순서 자체는 바뀌지 않는다. byKey는 슬롯마다
+// { ctx, validate(tm,cm), apply(tm,cm), diffs, label, conflicted, source } 를 담아,
+// rebuildManualWorkingMaps가 이 순서대로 재생하며 각 선택이 여전히 유효한지 검증하고
+// 유효한 것만 작업 사본에 반영한다.
+var manualWorkingState = { order: [], byKey: {}, teacherMap: null, classMap: null, conflicts: [] };
 
-  var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
-  manualAssignState = { total: affected.length, diffsByCtxKey: {} };
+// order 순서대로 각 슬롯의 선택을 원본 스케줄 위에 재생해 작업 사본을 다시 만든다.
+// excludeKey를 주면 그 슬롯 자신의 선택은 건너뛴다 — 이미 확정된 슬롯을 다시 열어
+// 후보를 재계산할 때, 그 슬롯 자신이 비워놓은 흔적이 후보 계산에 섞이지 않게 하기
+// 위해서다. 각 슬롯은 자신을 만들어냈던 find* 함수를 그대로 재실행해(validate) 아직도
+// 유효한 후보인지 확인하고, 유효하면 apply해서 이후 슬롯 계산에 반영하고, 무효하면
+// (다른 슬롯 편집의 여파로 더 이상 성립하지 않으면) 적용하지 않은 채 conflicts에
+// 기록한다 — 마치 아직 아무것도 선택 안 한 것처럼 취급해 이후 계산을 오염시키지 않는다.
+function rebuildManualWorkingMaps(excludeKey) {
+  var teacherMap = cloneScheduleMap(STATE.teacherScheduleMap);
+  var classMap = cloneScheduleMap(STATE.classScheduleMap);
+  var conflicts = [];
+  manualWorkingState.order.forEach(function (key) {
+    if (key === excludeKey) return;
+    var entry = manualWorkingState.byKey[key];
+    if (!entry) return;
+    var ok = entry.validate(teacherMap, classMap);
+    entry.conflicted = !ok;
+    if (ok) {
+      entry.apply(teacherMap, classMap);
+    } else {
+      conflicts.push(key);
+    }
+  });
+  return { teacherMap: teacherMap, classMap: classMap, conflicts: conflicts };
+}
+
+// "수동으로 대체 찾기"·"자동으로 대체 찾기" 둘 다 영향받는 수업을 이 목록으로 보여준다.
+// 각 행을 클릭하면 그리드에서 그 칸을 직접 클릭한 것과 동일하게 동작한다
+// (handleCellClick 재사용 — 새 로직 없음). 자동 배정 직후에도 이 목록이 그대로
+// 쓰이므로, 자동으로 채워진 슬롯도 똑같이 클릭해서 다른 후보로 바꿀 수 있다.
+function renderAffectedSlotList(affected) {
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
+  listEl.innerHTML = '';
   if (affected.length === 0) {
     var empty = document.createElement('div');
     empty.className = 'empty-state';
@@ -454,9 +558,10 @@ function renderManualAssignList() {
   }
 
   affected.forEach(function (ctx) {
-    var row = document.createElement('button');
-    row.type = 'button';
+    var row = document.createElement('div');
     row.className = 'manual-assign-row';
+    row.setAttribute('role', 'button');
+    row.tabIndex = 0;
     row.dataset.day = ctx.day;
     row.dataset.period = ctx.period;
 
@@ -465,42 +570,181 @@ function renderManualAssignList() {
     label.textContent = ctx.day + '요일 ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '');
     row.appendChild(label);
 
+    var outcome = document.createElement('span');
+    outcome.className = 'manual-assign-outcome';
+    row.appendChild(outcome);
+
+    var warn = document.createElement('span');
+    warn.className = 'manual-assign-warn';
+    warn.textContent = '⚠';
+    row.appendChild(warn);
+
     var check = document.createElement('span');
     check.className = 'manual-assign-check';
     check.textContent = '✓';
     row.appendChild(check);
 
-    row.addEventListener('click', function () {
+    var unresolveBtn = document.createElement('button');
+    unresolveBtn.type = 'button';
+    unresolveBtn.className = 'manual-assign-unresolve';
+    unresolveBtn.textContent = '✕ 선택 해제';
+    unresolveBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      unresolveManualSlot(ctx);
+    });
+    row.appendChild(unresolveBtn);
+
+    function openSlot() {
       var cellEl = document.querySelector('#boardTable td[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
       var rec = getRecord(STATE.teacherScheduleMap, ctx.teacher, ctx.day, ctx.period);
       if (cellEl && rec) handleCellClick(rec, cellEl);
+    }
+    row.addEventListener('click', openSlot);
+    row.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSlot(); }
     });
 
     listEl.appendChild(row);
   });
 }
 
-function markManualAssignResolved(ctx) {
-  if (!ctx) return;
-  var listEl = document.getElementById('manualAssignResults');
+// 행의 "→ 결과" 텍스트만 갱신한다(체크 표시는 건드리지 않음) — 자동 배정에서
+// 후보가 아예 없었던 슬롯(label 없음)에 "후보 없음"을 표시할 때 쓴다.
+function markManualAssignOutcome(ctx, outcomeText, isEmpty) {
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
   if (!listEl) return;
   var row = listEl.querySelector('[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
-  if (row) row.classList.add('manual-assign-resolved');
+  if (!row) return;
+  var outcome = row.querySelector('.manual-assign-outcome');
+  if (outcome) {
+    outcome.textContent = outcomeText ? '→ ' + outcomeText : '';
+    outcome.classList.toggle('manual-assign-outcome-empty', !!isEmpty);
+  }
+}
+
+function markManualAssignResolved(ctx, outcomeText) {
+  if (!ctx) return;
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
+  if (!listEl) return;
+  var row = listEl.querySelector('[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
+  if (!row) return;
+  row.classList.add('manual-assign-resolved');
+  row.classList.remove('manual-assign-conflicted');
+  markManualAssignOutcome(ctx, outcomeText, false);
+}
+
+// 슬롯 목록 중 conflicts(rebuildManualWorkingMaps가 돌려준, 더 이상 유효하지 않은
+// 선택들)에 해당하는 행에 ⚠ 표시를 켠다 — 자동 취소하지 않고 경고만 남겨 사용자가
+// 직접 다시 확인하게 한다.
+function renderManualConflictBadges(conflicts) {
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
+  if (!listEl) return;
+  listEl.querySelectorAll('.manual-assign-row').forEach(function (row) {
+    var key = row.dataset.day + '_' + row.dataset.period;
+    row.classList.toggle('manual-assign-conflicted', conflicts.indexOf(key) !== -1);
+  });
+}
+
+function renderManualConflictBanner(conflicts) {
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
+  if (!listEl) return;
+  var banner = listEl.querySelector('.manual-conflict-banner');
+  if (!banner) {
+    banner = document.createElement('div');
+    banner.className = 'manual-conflict-banner';
+    listEl.insertBefore(banner, listEl.firstChild);
+  }
+  var labelTexts = conflicts.map(function (key) {
+    var parts = key.split('_');
+    var row = listEl.querySelector('[data-day="' + parts[0] + '"][data-period="' + parts[1] + '"]');
+    var labelEl = row && row.querySelector('.manual-assign-label');
+    return labelEl ? labelEl.textContent : key;
+  });
+  banner.textContent = '⚠ 충돌 발생 — 다시 확인이 필요합니다: ' + labelTexts.join(', ');
+}
+
+function clearManualConflictBanner() {
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
+  var banner = listEl && listEl.querySelector('.manual-conflict-banner');
+  if (banner) banner.remove();
 }
 
 // 실제로 후보를 골랐을 때 makeCandListItem의 클릭 핸들러가 호출한다 — 체크 표시 +
-// 진행 상황 기록, 다 채워지면 전체 시간표를 그린다.
-function recordManualResolution(ctx, diffs) {
+// 진행 상황 기록, 작업 사본 재계산, 열려있는 다른 슬롯 패널 갱신, 충돌 표시,
+// 전체 시간표 갱신까지 한 번에 처리한다.
+function commitManualSelection(ctx, entry, label) {
   if (!ctx || !manualAssignState.total) return;
-  markManualAssignResolved(ctx);
-  manualAssignState.diffsByCtxKey[ctx.day + '_' + ctx.period] = diffs || [];
+  var key = ctx.day + '_' + ctx.period;
+  if (manualWorkingState.byKey[key] === undefined) manualWorkingState.order.push(key);
+  manualWorkingState.byKey[key] = { ctx: ctx, validate: entry.validate, apply: entry.apply, diffs: entry.diffs, label: label, conflicted: false, source: 'manual' };
+  manualAssignState.diffsByCtxKey[key] = entry.diffs;
+
+  var working = rebuildManualWorkingMaps();
+  manualWorkingState.teacherMap = working.teacherMap;
+  manualWorkingState.classMap = working.classMap;
+  manualWorkingState.conflicts = working.conflicts;
+
+  markManualAssignResolved(ctx, label);
+  renderManualConflictBadges(working.conflicts);
+  refreshOpenSidePanelIfStale(ctx);
+  maybeRenderManualAssignBoards(working.conflicts);
+}
+
+// 이미 확정된 슬롯의 선택을 취소한다("✕ 선택 해제"). 이후 슬롯들에 영향을 줄 수
+// 있으므로 작업 사본을 다시 계산하고, 지금 열려있는 후보 패널도 무조건 다시
+// 그린다(어느 슬롯이 열려있든 상관없이 — 다른 슬롯의 선택 취소도 그 슬롯의 후보에
+// 영향을 줄 수 있기 때문).
+function unresolveManualSlot(ctx) {
+  var key = ctx.day + '_' + ctx.period;
+  delete manualWorkingState.byKey[key];
+  var idx = manualWorkingState.order.indexOf(key);
+  if (idx !== -1) manualWorkingState.order.splice(idx, 1);
+  delete manualAssignState.diffsByCtxKey[key];
+
+  var working = rebuildManualWorkingMaps();
+  manualWorkingState.teacherMap = working.teacherMap;
+  manualWorkingState.classMap = working.classMap;
+  manualWorkingState.conflicts = working.conflicts;
+
+  var listEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].results);
+  var row = listEl && listEl.querySelector('[data-day="' + ctx.day + '"][data-period="' + ctx.period + '"]');
+  if (row) {
+    row.classList.remove('manual-assign-resolved', 'manual-assign-conflicted');
+    var outcome = row.querySelector('.manual-assign-outcome');
+    if (outcome) { outcome.textContent = ''; outcome.classList.remove('manual-assign-outcome-empty'); }
+  }
+  renderManualConflictBadges(working.conflicts);
+  refreshOpenSidePanelIfStale(null);
+  maybeRenderManualAssignBoards(working.conflicts);
+}
+
+// 지금 오른쪽 패널에 열려있는 후보 목록(lastSelectedCtx)이 방금 바뀐 슬롯과 다르면,
+// 최신 작업 사본 기준으로 다시 계산해서 다시 그린다 — 캐싱 없이 방문할 때마다
+// 재계산하므로 항상 최신 상태를 보여준다(학교 규모 데이터라 비용 문제 없음).
+function refreshOpenSidePanelIfStale(justChangedCtx) {
+  if (!lastSelectedCtx) return;
+  if (justChangedCtx && lastSelectedCtx.day === justChangedCtx.day && lastSelectedCtx.period === justChangedCtx.period) return;
+  hidePreview();
+  computeAndRenderTiers(lastSelectedCtx);
+}
+
+// 충돌(⚠)이 하나라도 남아있으면 전체 시간표 미리보기 자체를 만들지 않고 경고 배너만
+// 보여준다 — 충돌이 모두 해소되고 전체 슬롯이 다 채워졌을 때만 실제 합쳐진 시간표를
+// 그린다.
+function maybeRenderManualAssignBoards(conflicts) {
+  if (conflicts && conflicts.length > 0) {
+    renderManualConflictBanner(conflicts);
+    return;
+  }
+  clearManualConflictBanner();
   if (Object.keys(manualAssignState.diffsByCtxKey).length === manualAssignState.total) {
     renderManualAssignBoards();
   }
 }
 
 function renderManualAssignBoards() {
-  var boardsEl = document.getElementById('manualAssignBoards');
+  var boardsEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].boards);
+  if (!boardsEl) return;
   boardsEl.innerHTML = '';
   var diffsByTeacher = {};
   Object.keys(manualAssignState.diffsByCtxKey).forEach(function (key) {
@@ -513,6 +757,14 @@ function renderManualAssignBoards() {
     var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
     boardsEl.appendChild(buildScheduleCard(title, teacher, diffsByTeacher[teacher]));
   });
+}
+
+function renderManualAssignList() {
+  clearResults(); // 자동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
+  activeAssignSurface = 'manual';
+  var affected = findAbsenceAffectedClasses(STATE.currentTeacher);
+  manualAssignState = { total: affected.length, diffsByCtxKey: {} };
+  renderAffectedSlotList(affected);
 }
 
 // ---------- 표시 옵션: 대강 우선 ----------
@@ -538,6 +790,20 @@ function handleCellClick(rec, cellEl) {
   var ctx = { teacher: rec.teacher, day: rec.day, period: rec.period, subject: rec.subject, className: rec.className, moveGroupId: rec.moveGroupId };
   lastSelectedCtx = ctx;
 
+  computeAndRenderTiers(ctx);
+}
+
+// handleCellClick과 슬롯 목록 재갱신(refreshOpenSidePanelIfStale) 둘 다 이 함수를
+// 통해 후보를 계산한다. 이 슬롯 자신의 현재 선택은 제외한(rebuildManualWorkingMaps의
+// excludeKey) 작업 사본 기준으로 계산하므로, 다른 슬롯들의 확정된 선택은 반영하면서도
+// 이미 확정된 슬롯을 다시 열었을 때 자기 자신이 비워놓은 자리 때문에 후보가 이상하게
+// 나오는 일은 없다.
+function computeAndRenderTiers(ctx) {
+  var key = ctx.day + '_' + ctx.period;
+  var working = rebuildManualWorkingMaps(key);
+  var teacherMap = working.teacherMap;
+  var classMap = working.classMap;
+
   // "대강 우선"이 켜져 있으면 1순위(맞교체·이동수업) 계산·표시를 아예 건너뛰고
   // 곧장 2·3순위 폴백으로 간다.
   if (!STATE.preferSubstitute) {
@@ -545,27 +811,28 @@ function handleCellClick(rec, cellEl) {
     var tier1, tier1NonEmpty;
     if (ctx.moveGroupId) {
       var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
-      var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, STATE.teacherScheduleMap, STATE.classScheduleMap, absences).setSwaps;
-      var combos = findMoveComboCandidates(ctx, groupA, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
+      var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, teacherMap, classMap, absences).setSwaps;
+      var combos = findMoveComboCandidates(ctx, groupA, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
       tier1 = { setSwaps: setSwaps, combos: combos };
       tier1NonEmpty = setSwaps.length > 0 || combos.length > 0;
     } else {
-      tier1 = findNormalSwapCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames, STATE.weekSlots, absences);
+      tier1 = findNormalSwapCandidates(ctx, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
       tier1NonEmpty = tier1.length > 0;
     }
     if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
   }
 
-  var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, STATE.teacherScheduleMap, STATE.teacherNames);
+  var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, teacherMap, STATE.teacherNames);
   if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
 
-  var tier3 = findFallbackSubstituteCandidates(ctx, STATE.teacherScheduleMap, STATE.teacherNames);
+  var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames);
   renderResults(ctx, 3, tier3);
 }
 
 // 후보 한 줄(<li>)을 만든다. onSelect가 있으면 클릭 가능한 버튼으로, 없으면(이동수업처럼
-// 선택해서 미리보기를 만들 수 없는 경우) 그냥 텍스트로 렌더링.
-function makeCandListItem(whoText, whereText, onSelect, diffs) {
+// 선택해서 미리보기를 만들 수 없는 경우) 그냥 텍스트로 렌더링. entry는 이 후보를
+// 골랐을 때 작업 사본에 반영할 {validate, apply, diffs}(commitManualSelection이 씀).
+function makeCandListItem(whoText, whereText, onSelect, entry, label) {
   var li = document.createElement('li');
   if (onSelect) {
     var btn = document.createElement('button');
@@ -589,7 +856,7 @@ function makeCandListItem(whoText, whereText, onSelect, diffs) {
       }
       btn.classList.add('is-selected');
       onSelect();
-      recordManualResolution(lastSelectedCtx, diffs); // "수동으로 대체 찾기" 진행 기록
+      commitManualSelection(lastSelectedCtx, entry, label); // "수동으로 대체 찾기" 진행 기록 + 작업 사본 반영
     });
     li.appendChild(btn);
   } else {
@@ -653,6 +920,7 @@ function groupComboPairsByClass(pairs) {
 function renderResults(ctx, tier, data) {
   var body = document.getElementById('sidePanel');
   body.innerHTML = '';
+  var absences = currentAbsences();
 
   var titleDiv = document.createElement('div');
   titleDiv.className = 'results-title';
@@ -669,9 +937,11 @@ function renderResults(ctx, tier, data) {
     var items0 = [];
     data.setSwaps.forEach(function (s) {
       var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
+      var entryS = buildSetSwapEntry(ctx, s, absences);
+      var labelS = '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동';
       items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
         selectMoveSetSwap(ctx, groupA, s);
-      }, buildRelocateDiff(ctx, s.targetDay, s.targetPeriod)));
+      }, entryS, labelS));
     });
     data.combos.forEach(function (combo) {
       var classText = groupComboPairsByClass(combo.pairs).map(function (g) {
@@ -679,43 +949,39 @@ function renderResults(ctx, tier, data) {
         return g.className + '반 [' + memberText + '] ↔ ' + g.candidate.teacher + ' 교사';
       }).join(' · ');
       var whereText = combo.targetDay + '요일 ' + combo.targetPeriod + '교시로 이동 — ' + classText;
-      // 개별 조합 교체는 세트 안 여러 반(멤버)이 동시에 움직이므로, 각 pair(멤버 ↔
-      // 후보)의 diff를 전부 합쳐야 전체 시간표에 다 반영된다.
-      var comboDiffs = [];
-      combo.pairs.forEach(function (p) {
-        comboDiffs = comboDiffs.concat(buildSwapDiff(
-          { teacher: p.member.teacher, day: ctx.day, period: ctx.period, subject: p.member.subject, className: p.member.className },
-          { teacher: p.candidate.teacher, day: p.candidate.day, period: p.candidate.period, subject: p.candidate.subject, className: p.candidate.className }
-        ));
-      });
+      var entryC = buildComboEntry(ctx, groupA, combo, absences);
+      var labelC = '개별 조합 교체 — ' + combo.targetDay + '요일 ' + combo.targetPeriod + '교시';
       items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
         selectMoveComboSwap(ctx, groupA, combo);
-      }, comboDiffs));
+      }, entryC, labelC));
     });
     appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
   } else if (tier === 1) {
     var items1 = data.map(function (c) {
+      var entryN = buildNormalSwapEntry(ctx, c, absences);
+      var labelN = c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)';
       return makeCandListItem(c.teacher + ' 교사', c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')', function () {
         selectNormalSwap(ctx, c);
-      }, buildSwapDiff(
-        { teacher: ctx.teacher, day: ctx.day, period: ctx.period, subject: ctx.subject, className: ctx.className },
-        { teacher: c.teacher, day: c.day, period: c.period, subject: c.subject, className: c.className }
-      ));
+      }, entryN, labelN);
     });
     appendTierBlock(body, 'tier-1', '1순위: 맞교체 가능', null, items1);
   } else if (tier === 2) {
     var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
     var items2 = data.map(function (c) {
+      var entry2 = buildSubstituteEntry(ctx, c.teacher, 2);
+      var label2 = c.teacher + ' 교사 (대강)';
       return makeCandListItem(c.teacher + ' 교사', null, function () {
         selectSubstitute(ctx, c.teacher);
-      }, buildSubstituteDiff(ctx, c.teacher));
+      }, entry2, label2);
     });
     appendTierBlock(body, 'tier-2', '2순위: 동교과 대강 후보', note2, items2);
   } else if (tier === 3) {
     var items3 = data.map(function (c) {
+      var entry3 = buildSubstituteEntry(ctx, c.teacher, 3);
+      var label3 = c.teacher + ' 교사 (대강, 참고용)';
       return makeCandListItem(c.teacher + ' 교사', null, function () {
         selectSubstitute(ctx, c.teacher);
-      }, buildSubstituteDiff(ctx, c.teacher));
+      }, entry3, label3);
     });
     appendTierBlock(body, 'tier-3', '3순위: 전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
   }

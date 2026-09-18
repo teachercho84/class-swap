@@ -237,22 +237,6 @@ select#teacherSelect:focus-visible {
   gap: 6px;
   margin-top: 10px;
 }
-/* .cand-list li와 같은 카드 톤이지만 클릭 불가(읽기 전용 요약) — who/where 대신
-   수업 정보/결과를 한 줄에 좌우로 배치. */
-.auto-assign-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 12px;
-  font-size: 0.88rem;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 8px 12px;
-}
-.auto-assign-label { font-weight: 500; flex: none; max-width: 45%; word-break: keep-all; }
-.auto-assign-outcome { color: var(--ink-soft); flex: 1 1 auto; min-width: 0; text-align: left; word-break: keep-all; }
-.auto-assign-outcome-empty { color: var(--danger); }
 #autoAssignBoards:not(:empty), #manualAssignBoards:not(:empty) { margin-top: 14px; }
 
 .manual-assign-results {
@@ -261,8 +245,9 @@ select#teacherSelect:focus-visible {
   gap: 6px;
   margin-top: 10px;
 }
-/* .auto-assign-row와 같은 카드 톤이지만 클릭 가능한 <button> — 클릭하면 그리드에서
-   그 칸을 직접 클릭한 것과 동일하게 동작(handleCellClick 재사용). */
+/* 자동/수동 배정 화면이 공유하는 슬롯 행 — 클릭(또는 Enter/Space)하면 그리드에서
+   그 칸을 직접 클릭한 것과 동일하게 동작(handleCellClick 재사용). 자동 배정 직후에도
+   이 같은 행이 쓰이므로 처음부터 배정 결과(outcome)를 보여주면서 클릭도 가능하다. */
 .manual-assign-row {
   all: unset;
   box-sizing: border-box;
@@ -270,7 +255,7 @@ select#teacherSelect:focus-visible {
   width: 100%;
   justify-content: space-between;
   align-items: baseline;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
   font-size: 0.88rem;
   background: var(--paper);
@@ -280,10 +265,47 @@ select#teacherSelect:focus-visible {
   transition: box-shadow .15s ease, transform .15s ease;
 }
 .manual-assign-row:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-.manual-assign-label { font-weight: 500; word-break: keep-all; }
+.manual-assign-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.manual-assign-label { font-weight: 500; flex: none; max-width: 42%; word-break: keep-all; }
+.manual-assign-outcome {
+  display: none;
+  color: var(--ink-soft);
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: left;
+  word-break: keep-all;
+}
+.manual-assign-row.manual-assign-resolved .manual-assign-outcome,
+.manual-assign-row.manual-assign-conflicted .manual-assign-outcome { display: block; }
+.manual-assign-outcome-empty { color: var(--danger); }
 .manual-assign-check { color: var(--added); font-weight: 700; opacity: 0; flex: none; }
+.manual-assign-warn { color: var(--danger); font-weight: 700; opacity: 0; flex: none; }
 .manual-assign-row.manual-assign-resolved { border-color: var(--added); background: var(--added-soft); }
 .manual-assign-row.manual-assign-resolved .manual-assign-check { opacity: 1; }
+.manual-assign-row.manual-assign-conflicted { border-color: var(--danger); background: var(--danger-soft); }
+.manual-assign-row.manual-assign-conflicted .manual-assign-warn { opacity: 1; }
+.manual-assign-unresolve {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  display: none;
+  flex: none;
+  padding: 2px 6px;
+  border-radius: 6px;
+}
+.manual-assign-row.manual-assign-resolved .manual-assign-unresolve,
+.manual-assign-row.manual-assign-conflicted .manual-assign-unresolve { display: inline; }
+.manual-assign-unresolve:hover { color: var(--danger); background: var(--danger-soft); }
+.manual-conflict-banner {
+  font-size: 0.88rem;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 1px solid var(--danger);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
 
 .option-checkbox {
   display: flex;

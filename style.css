@@ -299,11 +299,9 @@ select#teacherSelect:focus-visible {
 .manual-assign-row {
   all: unset;
   box-sizing: border-box;
-  display: flex;
+  display: block;
   width: 100%;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
+  line-height: 1.5;
   cursor: pointer;
   font-size: 0.88rem;
   background: var(--paper);
@@ -314,49 +312,37 @@ select#teacherSelect:focus-visible {
 }
 .manual-assign-row:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .manual-assign-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
-/* 텍스트(라벨+결과)는 왼쪽에서 남는 공간을 다 차지하고, 아이콘·버튼은 actions로
-   묶어 오른쪽 끝에 고정 — 그래야 둘 사이에 불필요한 빈 칸이 생기지 않고, 텍스트가
-   아이콘 직전까지 최대한 길게 들어갈 수 있다. */
-.manual-assign-text {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-  flex: 1 1 auto;
-}
-.manual-assign-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-}
-.manual-assign-label { font-weight: 500; flex: none; max-width: 42%; word-break: keep-all; }
+/* flex를 아예 안 쓰고 label/outcome/warn/check/unresolve를 평범한 인라인 요소로
+   나란히 흘려보낸다(문장처럼) — 그래야 줄바꿈이 필요할 때 ✓/✕도 마지막 글자
+   바로 뒤에 붙은 채로 자연스럽게 다음 줄로 넘어가고, flex 아이템 박스 때문에
+   생기던 "글자와 아이콘 사이 빈 칸"이 원천적으로 안 생긴다. 별도의 "아이콘 줄"도
+   만들지 않으므로 세로 줄 수도 늘지 않는다. */
+.manual-assign-label { font-weight: 500; word-break: keep-all; }
 .manual-assign-outcome {
   display: none;
   color: var(--ink-soft);
-  flex: 0 1 auto;
-  min-width: 0;
-  text-align: left;
   word-break: keep-all;
+  margin-left: 6px;
 }
 .manual-assign-row.manual-assign-resolved .manual-assign-outcome,
-.manual-assign-row.manual-assign-conflicted .manual-assign-outcome { display: block; }
+.manual-assign-row.manual-assign-conflicted .manual-assign-outcome { display: inline; }
 .manual-assign-outcome-empty { color: var(--danger); }
-.manual-assign-check { color: var(--added); font-weight: 700; font-size: 0.8rem; opacity: 0; flex: none; }
-.manual-assign-warn { color: var(--danger); font-weight: 700; opacity: 0; flex: none; }
+.manual-assign-check { display: none; color: var(--added); font-weight: 700; font-size: 0.78rem; margin-left: 6px; }
+.manual-assign-warn { display: none; color: var(--danger); font-weight: 700; margin-left: 6px; }
 .manual-assign-row.manual-assign-resolved { border-color: var(--added); background: var(--added-soft); }
-.manual-assign-row.manual-assign-resolved .manual-assign-check { opacity: 1; }
+.manual-assign-row.manual-assign-resolved .manual-assign-check { display: inline; }
 .manual-assign-row.manual-assign-conflicted { border-color: var(--danger); background: var(--danger-soft); }
-.manual-assign-row.manual-assign-conflicted .manual-assign-warn { opacity: 1; }
+.manual-assign-row.manual-assign-conflicted .manual-assign-warn { display: inline; }
 .manual-assign-unresolve {
   all: unset;
   box-sizing: border-box;
-  cursor: pointer;
-  font-size: 0.78rem;
-  color: var(--ink-soft);
   display: none;
-  flex: none;
-  padding: 2px 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-left: 6px;
+  padding: 2px 5px;
   border-radius: 6px;
 }
 .manual-assign-row.manual-assign-resolved .manual-assign-unresolve,

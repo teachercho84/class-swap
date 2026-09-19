@@ -422,7 +422,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         var entryS = buildSetSwapEntry(ctx, groupA, s, absences);
         entryS.apply(teacherMap, classMap);
         return {
-          text: '세트 — ' + s.targetDay + ' ' + s.targetPeriod + '교시로 이동',
+          text: '세트간 교체 — ' + s.targetDay + ' ' + s.targetPeriod + '교시로 이동',
           diffs: entryS.diffs,
           entry: entryS
         };
@@ -437,7 +437,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         var entryC = buildComboEntry(ctx, groupA, picked.combo, absences);
         entryC.apply(teacherMap, classMap);
         return {
-          text: picked.pair.candidate.teacher + ' (조합, ' + picked.pair.candidate.day + ' ' + picked.pair.candidate.period + '교시 · ' + picked.pair.candidate.subject + ')',
+          text: picked.pair.candidate.teacher + ' (개별 조합 교체, ' + picked.pair.candidate.day + ' ' + picked.pair.candidate.period + '교시 · ' + picked.pair.candidate.subject + ')',
           diffs: entryC.diffs,
           entry: entryC
         };
@@ -625,32 +625,28 @@ function renderAffectedSlotList(affected) {
     row.dataset.day = ctx.day;
     row.dataset.period = ctx.period;
 
-    var textGroup = document.createElement('span');
-    textGroup.className = 'manual-assign-text';
-    row.appendChild(textGroup);
-
+    // 라벨/결과/아이콘/버튼을 전부 일반 인라인 흐름으로 이어 붙인다(flex 아님) —
+    // 그래야 글이 한 문장처럼 자연스럽게 줄바꿈되면서, ✓/✕도 마지막 글자 바로 뒤에
+    // 붙어 있다가 정말 자리가 없을 때만 다음 줄로 넘어간다. 별도의 "아이콘 줄"을
+    // 만들지 않으므로 줄 수(세로 높이)가 늘지 않는다.
     var label = document.createElement('span');
     label.className = 'manual-assign-label';
     label.textContent = ctx.day + ' ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className : '');
-    textGroup.appendChild(label);
+    row.appendChild(label);
 
     var outcome = document.createElement('span');
     outcome.className = 'manual-assign-outcome';
-    textGroup.appendChild(outcome);
-
-    var actions = document.createElement('span');
-    actions.className = 'manual-assign-actions';
-    row.appendChild(actions);
+    row.appendChild(outcome);
 
     var warn = document.createElement('span');
     warn.className = 'manual-assign-warn';
     warn.textContent = '⚠';
-    actions.appendChild(warn);
+    row.appendChild(warn);
 
     var check = document.createElement('span');
     check.className = 'manual-assign-check';
     check.textContent = '✓';
-    actions.appendChild(check);
+    row.appendChild(check);
 
     var unresolveBtn = document.createElement('button');
     unresolveBtn.type = 'button';
@@ -662,7 +658,7 @@ function renderAffectedSlotList(affected) {
       e.stopPropagation();
       unresolveManualSlot(ctx);
     });
-    actions.appendChild(unresolveBtn);
+    row.appendChild(unresolveBtn);
 
     row.addEventListener('click', function () { openManualSlot(ctx); });
     row.addEventListener('keydown', function (e) {
@@ -1027,14 +1023,22 @@ function renderResults(ctx, tier, data) {
       }).join(' · ');
       var whereText = combo.targetDay + ' ' + combo.targetPeriod + '교시로 이동 — ' + classText;
       var entryC = buildComboEntry(ctx, groupA, combo, absences);
-      var labelC = '개별 조합 교체 — ' + combo.targetDay + ' ' + combo.targetPeriod + '교시';
+      var myPair = combo.pairs.filter(function (p) { return p.member.teacher === ctx.teacher; })[0];
+      var labelC = myPair
+        ? myPair.candidate.teacher + ' (개별 조합 교체, ' + myPair.candidate.day + ' ' + myPair.candidate.period + '교시 · ' + myPair.candidate.subject + ')'
+        : '개별 조합 교체 — ' + combo.targetDay + ' ' + combo.targetPeriod + '교시';
       items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
         selectMoveComboSwap(ctx, groupA, combo);
       }, entryC, labelC));
     });
     appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
   } else if (tier === 1) {
-    var items1 = data.map(function (c) {
+    var sorted1 = data.slice().sort(function (a, b) {
+      var dayDiff = STATE.dayList.indexOf(a.day) - STATE.dayList.indexOf(b.day);
+      if (dayDiff !== 0) return dayDiff;
+      return a.period - b.period;
+    });
+    var items1 = sorted1.map(function (c) {
       var entryN = buildNormalSwapEntry(ctx, c, absences);
       var labelN = c.teacher + ' (교체, ' + c.day + ' ' + c.period + '교시 · ' + c.subject + ')';
       return makeCandListItem(c.teacher + ' 교사', c.day + ' ' + c.period + '교시 (' + c.className + ' ' + c.subject + ')', function () {

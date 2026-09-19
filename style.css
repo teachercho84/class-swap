@@ -104,6 +104,14 @@ header.masthead .sub {
   margin-top: 5px;
 }
 
+.board-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
 .teacher-picker {
   display: flex;
   align-items: center;
@@ -120,7 +128,7 @@ select#teacherSelect {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 9px 14px;
-  min-width: 150px;
+  min-width: 140px;
   box-shadow: var(--shadow-sm);
   outline: none;
   transition: border-color .15s ease, box-shadow .15s ease;
@@ -147,12 +155,18 @@ select#teacherSelect:focus-visible {
   border-radius: 12px;
   box-shadow: var(--shadow-sm);
   padding: 14px 16px;
-  margin-bottom: 24px;
 }
 .absence-panel-head {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+.absence-panel-title-row {
+  display: flex;
   align-items: center;
-  gap: 16px;
+  justify-content: space-between;
+  gap: 8px;
   flex-wrap: wrap;
 }
 .absence-panel-title {
@@ -162,11 +176,16 @@ select#teacherSelect:focus-visible {
 }
 .absence-panel-controls {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 8px;
   font-size: 0.88rem;
   color: var(--ink-soft);
+}
+.absence-control-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .absence-panel-controls select {
   font-family: inherit;
@@ -177,7 +196,24 @@ select#teacherSelect:focus-visible {
   border-radius: 8px;
   padding: 6px 10px;
 }
-.absence-period-checks { display: flex; align-items: center; gap: 8px; }
+.absence-day-picks { display: flex; gap: 6px; }
+.absence-day-pick {
+  all: unset;
+  box-sizing: border-box;
+  flex: 1;
+  text-align: center;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: var(--free);
+  color: var(--ink);
+  transition: background .15s ease, color .15s ease;
+}
+.absence-day-pick:hover { background: var(--line); }
+.absence-day-pick.is-active { background: var(--accent); color: var(--accent-ink); }
+.absence-period-checks { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .absence-period-checks label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
 .absence-panel-controls button {
   all: unset;
@@ -239,6 +275,18 @@ select#teacherSelect:focus-visible {
 }
 #autoAssignBoards:not(:empty), #manualAssignBoards:not(:empty) { margin-top: 14px; }
 
+.assign-slot-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-sm);
+  padding: 12px;
+  margin-top: 16px;
+}
+
 .manual-assign-results {
   display: flex;
   flex-direction: column;
@@ -255,7 +303,7 @@ select#teacherSelect:focus-visible {
   width: 100%;
   justify-content: space-between;
   align-items: baseline;
-  gap: 10px;
+  gap: 8px;
   cursor: pointer;
   font-size: 0.88rem;
   background: var(--paper);
@@ -266,11 +314,27 @@ select#teacherSelect:focus-visible {
 }
 .manual-assign-row:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
 .manual-assign-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 텍스트(라벨+결과)는 왼쪽에서 남는 공간을 다 차지하고, 아이콘·버튼은 actions로
+   묶어 오른쪽 끝에 고정 — 그래야 둘 사이에 불필요한 빈 칸이 생기지 않고, 텍스트가
+   아이콘 직전까지 최대한 길게 들어갈 수 있다. */
+.manual-assign-text {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.manual-assign-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
 .manual-assign-label { font-weight: 500; flex: none; max-width: 42%; word-break: keep-all; }
 .manual-assign-outcome {
   display: none;
   color: var(--ink-soft);
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   text-align: left;
   word-break: keep-all;
@@ -278,7 +342,7 @@ select#teacherSelect:focus-visible {
 .manual-assign-row.manual-assign-resolved .manual-assign-outcome,
 .manual-assign-row.manual-assign-conflicted .manual-assign-outcome { display: block; }
 .manual-assign-outcome-empty { color: var(--danger); }
-.manual-assign-check { color: var(--added); font-weight: 700; opacity: 0; flex: none; }
+.manual-assign-check { color: var(--added); font-weight: 700; font-size: 0.8rem; opacity: 0; flex: none; }
 .manual-assign-warn { color: var(--danger); font-weight: 700; opacity: 0; flex: none; }
 .manual-assign-row.manual-assign-resolved { border-color: var(--added); background: var(--added-soft); }
 .manual-assign-row.manual-assign-resolved .manual-assign-check { opacity: 1; }
@@ -292,7 +356,7 @@ select#teacherSelect:focus-visible {
   color: var(--ink-soft);
   display: none;
   flex: none;
-  padding: 2px 6px;
+  padding: 2px 4px;
   border-radius: 6px;
 }
 .manual-assign-row.manual-assign-resolved .manual-assign-unresolve,
@@ -309,20 +373,19 @@ select#teacherSelect:focus-visible {
 
 .option-checkbox {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
   font-size: 0.85rem;
   color: var(--ink-soft);
   cursor: pointer;
-  margin-top: 12px;
+  flex: none;
 }
-.option-checkbox input { margin-top: 3px; flex: none; }
+.option-checkbox input { flex: none; }
 
 .legend {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-bottom: 24px;
 }
 .legend span {
   display: inline-flex;
@@ -342,18 +405,33 @@ select#teacherSelect:focus-visible {
 .swatch.normal { background: var(--paper); }
 .swatch.move { background: var(--warm-soft); border-color: var(--warm); }
 
-/* ---- 상단 영역: 왼쪽 60% 시간표 / 오른쪽 40% 후보 패널 ---- */
+/* ---- 상단 영역: 시간표 40% / 후보 30% / 출결 패널 30% (이 순서로 좌→우, HTML 소스 순서와 동일) ---- */
 .main-row {
   display: flex;
   gap: 24px;
-  align-items: stretch; /* 오른쪽 후보 패널을 왼쪽 시간표와 같은 높이로 맞춘다 —
+  align-items: stretch; /* 후보·출결 패널을 시간표와 같은 높이로 맞춘다 —
                             넘치는 후보 목록은 그 안에서만 스크롤된다. */
 }
-.board-col { flex: 0 0 60%; max-width: 60%; min-width: 0; }
-.side-col { flex: 0 0 40%; max-width: 40%; min-width: 0; }
+.board-col { flex: 0 0 40%; max-width: 40%; min-width: 0; }
+.side-col { flex: 0 0 30%; max-width: 30%; min-width: 0; }
+.absence-col {
+  flex: 0 0 30%;
+  max-width: 30%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* .side-panel과 같은 이유로 진짜 고정 상한이 필요하다 — 이게 없으면 슬롯 목록이
+     길어질 때 이 컬럼의 콘텐츠 높이 자체가 늘어나 버려서, align-items:stretch가
+     그 늘어난 높이를 기준으로 시간표·후보 컬럼까지 같이 늘려버린다(스크롤이 걸릴 일이
+     없어짐). max-height로 여기서 멈추게 해야 안의 .assign-slot-panel이 내부
+     스크롤을 맡을 수 있다. 값은 왼쪽 시간표(교사 선택 한 줄 + 7교시 표) 높이와
+     맞춘 것 — .side-panel의 max-height와 항상 같은 값으로 유지한다. */
+  max-height: 600px;
+}
 @media (max-width: 760px) {
   .main-row { flex-direction: column; }
-  .board-col, .side-col { flex: 1 1 auto; max-width: 100%; width: 100%; }
+  .board-col, .side-col, .absence-col { flex: 1 1 auto; max-width: 100%; width: 100%; }
 }
 
 .board-scroll {
@@ -550,8 +628,9 @@ table.mini-board .cell-move .cell-btn::before {
   /* 진짜 고정 상한. 이게 없으면 후보가 많아질 때 height:100%가 커지는 대로
      align-items:stretch가 왼쪽 시간표까지 같이 늘려버려서 스크롤이 걸릴 일이 없어진다
      (페이지 전체가 그냥 다같이 커짐) — max-height로 여기서 멈추게 해야 그 안의
-     .cand-list가 내부 스크롤을 맡을 수 있다. 왼쪽 시간표(7교시) 높이와 비슷한 값. */
-  max-height: 550px;
+     .cand-list가 내부 스크롤을 맡을 수 있다. 왼쪽 시간표(교사 선택 한 줄 + 7교시 표)
+     높이와 맞춘 값 — .absence-col의 max-height와 항상 같은 값으로 유지한다. */
+  max-height: 600px;
   display: flex;
   flex-direction: column;
   font-size: 0.95rem;

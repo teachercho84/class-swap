@@ -26,7 +26,7 @@ function renderTitle() {
   var title = (s.year || '') + '학년도 ' + (s.semester || '') + ' ' + (s.schoolName || '') + ' 수업 시간표 교체';
   document.title = title;
   document.getElementById('pageTitle').textContent = title;
-  document.getElementById('pageSub').textContent = '칸을 눌러 맞교체·대강 후보를 찾아보세요.';
+  document.getElementById('pageSub').textContent = '';
 }
 
 function renderTeacherOptions() {
@@ -110,6 +110,23 @@ function renderAbsenceDayOptions() {
     opt.textContent = day + '요일';
     sel.appendChild(opt);
   });
+
+  // 요일 select는 실제 값 저장소로만 쓰고, 화면에는 교시 체크박스와 같은 톤의
+  // 필 버튼으로 보여준다 — 하나만 활성화되는 단일 선택(라디오 방식)을 유지한다.
+  var picks = document.getElementById('absenceDayPicks');
+  picks.innerHTML = '';
+  STATE.dayList.forEach(function (day, i) {
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'absence-day-pick' + (i === 0 ? ' is-active' : '');
+    btn.textContent = day + '요일';
+    btn.addEventListener('click', function () {
+      sel.value = day;
+      picks.querySelectorAll('.absence-day-pick').forEach(function (b) { b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+    });
+    picks.appendChild(btn);
+  });
 }
 
 // 등록된 결근을 요일별로 묶어 태그로 그린다 — 1~7교시가 다 등록돼 있으면 "OO요일 전체",
@@ -179,6 +196,8 @@ function resetAbsenceForm() {
   document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]').forEach(function (cb) {
     cb.checked = false;
   });
+  var picks = document.querySelectorAll('#absenceDayPicks .absence-day-pick');
+  picks.forEach(function (b, i) { b.classList.toggle('is-active', i === 0); });
 }
 
 // 초기화 버튼: 현재 교사에 대해 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과,
@@ -403,7 +422,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         var entryS = buildSetSwapEntry(ctx, groupA, s, absences);
         entryS.apply(teacherMap, classMap);
         return {
-          text: '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동',
+          text: '세트 — ' + s.targetDay + ' ' + s.targetPeriod + '교시로 이동',
           diffs: entryS.diffs,
           entry: entryS
         };
@@ -418,7 +437,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         var entryC = buildComboEntry(ctx, groupA, picked.combo, absences);
         entryC.apply(teacherMap, classMap);
         return {
-          text: picked.pair.candidate.teacher + ' 교사 (개별 조합 교체, ' + picked.pair.candidate.day + '요일 ' + picked.pair.candidate.period + '교시)',
+          text: picked.pair.candidate.teacher + ' (조합, ' + picked.pair.candidate.day + ' ' + picked.pair.candidate.period + '교시 · ' + picked.pair.candidate.subject + ')',
           diffs: entryC.diffs,
           entry: entryC
         };
@@ -430,7 +449,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
         var entryN = buildNormalSwapEntry(ctx, c, absences);
         entryN.apply(teacherMap, classMap);
         return {
-          text: c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)',
+          text: c.teacher + ' (교체, ' + c.day + ' ' + c.period + '교시 · ' + c.subject + ')',
           diffs: entryN.diffs,
           entry: entryN
         };
@@ -443,14 +462,14 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
     var pick2 = pickLeastLoaded(tier2, teacherMap, ctx.day, function (x) { return x.teacher; });
     var entry2 = buildSubstituteEntry(ctx, pick2.teacher, 2);
     entry2.apply(teacherMap, classMap);
-    return { text: pick2.teacher + ' 교사 (대강)', diffs: entry2.diffs, entry: entry2 };
+    return { text: pick2.teacher + ' (대강)', diffs: entry2.diffs, entry: entry2 };
   }
   var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames);
   if (tier3.length > 0) {
     var pick3 = pickLeastLoaded(tier3, teacherMap, ctx.day, function (x) { return x.teacher; });
     var entry3 = buildSubstituteEntry(ctx, pick3.teacher, 3);
     entry3.apply(teacherMap, classMap);
-    return { text: pick3.teacher + ' 교사 (대강, 참고용)', diffs: entry3.diffs, entry: entry3 };
+    return { text: pick3.teacher + ' (대강, 참고용)', diffs: entry3.diffs, entry: entry3 };
   }
   return { text: null, diffs: [], entry: null };
 }
@@ -606,34 +625,44 @@ function renderAffectedSlotList(affected) {
     row.dataset.day = ctx.day;
     row.dataset.period = ctx.period;
 
+    var textGroup = document.createElement('span');
+    textGroup.className = 'manual-assign-text';
+    row.appendChild(textGroup);
+
     var label = document.createElement('span');
     label.className = 'manual-assign-label';
-    label.textContent = ctx.day + '요일 ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '');
-    row.appendChild(label);
+    label.textContent = ctx.day + ' ' + ctx.period + '교시 · ' + ctx.subject + (ctx.className ? ' · ' + ctx.className : '');
+    textGroup.appendChild(label);
 
     var outcome = document.createElement('span');
     outcome.className = 'manual-assign-outcome';
-    row.appendChild(outcome);
+    textGroup.appendChild(outcome);
+
+    var actions = document.createElement('span');
+    actions.className = 'manual-assign-actions';
+    row.appendChild(actions);
 
     var warn = document.createElement('span');
     warn.className = 'manual-assign-warn';
     warn.textContent = '⚠';
-    row.appendChild(warn);
+    actions.appendChild(warn);
 
     var check = document.createElement('span');
     check.className = 'manual-assign-check';
     check.textContent = '✓';
-    row.appendChild(check);
+    actions.appendChild(check);
 
     var unresolveBtn = document.createElement('button');
     unresolveBtn.type = 'button';
     unresolveBtn.className = 'manual-assign-unresolve';
-    unresolveBtn.textContent = '✕ 선택 해제';
+    unresolveBtn.textContent = '✕';
+    unresolveBtn.title = '선택 해제';
+    unresolveBtn.setAttribute('aria-label', '선택 해제');
     unresolveBtn.addEventListener('click', function (e) {
       e.stopPropagation();
       unresolveManualSlot(ctx);
     });
-    row.appendChild(unresolveBtn);
+    actions.appendChild(unresolveBtn);
 
     row.addEventListener('click', function () { openManualSlot(ctx); });
     row.addEventListener('keydown', function (e) {
@@ -790,7 +819,13 @@ function renderManualAssignBoards() {
       diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type, subject: d.subject, className: d.className };
     });
   });
-  Object.keys(diffsByTeacher).forEach(function (teacher) {
+  var teacherKeys = Object.keys(diffsByTeacher);
+  teacherKeys.sort(function (a, b) {
+    if (a === STATE.currentTeacher) return -1;
+    if (b === STATE.currentTeacher) return 1;
+    return STATE.teacherNames.indexOf(a) - STATE.teacherNames.indexOf(b);
+  });
+  teacherKeys.forEach(function (teacher) {
     var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
     boardsEl.appendChild(buildScheduleCard(title, teacher, diffsByTeacher[teacher]));
   });
@@ -966,12 +1001,12 @@ function renderResults(ctx, tier, data) {
 
   var titleDiv = document.createElement('div');
   titleDiv.className = 'results-title';
-  titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + '요일 ' + ctx.period + '교시';
+  titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + ' ' + ctx.period + '교시';
   body.appendChild(titleDiv);
 
   var metaDiv = document.createElement('div');
   metaDiv.className = 'results-meta';
-  metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className + '반' : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
+  metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
   body.appendChild(metaDiv);
 
   if (tier === 1 && ctx.moveGroupId) {
@@ -980,19 +1015,19 @@ function renderResults(ctx, tier, data) {
     data.setSwaps.forEach(function (s) {
       var subjList = s.otherMembers.map(function (m) { return m.subject; }).join('/');
       var entryS = buildSetSwapEntry(ctx, groupA, s, absences);
-      var labelS = '세트간 교체 — ' + s.targetDay + '요일 ' + s.targetPeriod + '교시로 이동';
-      items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + '요일 ' + s.targetPeriod + '교시', function () {
+      var labelS = '세트간 교체 — ' + s.targetDay + ' ' + s.targetPeriod + '교시로 이동';
+      items0.push(makeCandListItem('세트간 교체', '"' + subjList + '" 세트 ↔ ' + s.targetDay + ' ' + s.targetPeriod + '교시', function () {
         selectMoveSetSwap(ctx, groupA, s);
       }, entryS, labelS));
     });
     data.combos.forEach(function (combo) {
       var classText = groupComboPairsByClass(combo.pairs).map(function (g) {
         var memberText = g.members.map(function (m) { return m.teacher + '(' + m.subject + ')'; }).join('+');
-        return g.className + '반 [' + memberText + '] ↔ ' + g.candidate.teacher + ' 교사';
+        return g.className + ' [' + memberText + '] ↔ ' + g.candidate.teacher + ' 교사';
       }).join(' · ');
-      var whereText = combo.targetDay + '요일 ' + combo.targetPeriod + '교시로 이동 — ' + classText;
+      var whereText = combo.targetDay + ' ' + combo.targetPeriod + '교시로 이동 — ' + classText;
       var entryC = buildComboEntry(ctx, groupA, combo, absences);
-      var labelC = '개별 조합 교체 — ' + combo.targetDay + '요일 ' + combo.targetPeriod + '교시';
+      var labelC = '개별 조합 교체 — ' + combo.targetDay + ' ' + combo.targetPeriod + '교시';
       items0.push(makeCandListItem('개별 조합 교체', whereText, function () {
         selectMoveComboSwap(ctx, groupA, combo);
       }, entryC, labelC));
@@ -1001,8 +1036,8 @@ function renderResults(ctx, tier, data) {
   } else if (tier === 1) {
     var items1 = data.map(function (c) {
       var entryN = buildNormalSwapEntry(ctx, c, absences);
-      var labelN = c.teacher + ' 교사 (맞교체, ' + c.day + '요일 ' + c.period + '교시)';
-      return makeCandListItem(c.teacher + ' 교사', c.day + '요일 ' + c.period + '교시 (' + c.className + '반 ' + c.subject + ')', function () {
+      var labelN = c.teacher + ' (교체, ' + c.day + ' ' + c.period + '교시 · ' + c.subject + ')';
+      return makeCandListItem(c.teacher + ' 교사', c.day + ' ' + c.period + '교시 (' + c.className + ' ' + c.subject + ')', function () {
         selectNormalSwap(ctx, c);
       }, entryN, labelN);
     });
@@ -1011,7 +1046,7 @@ function renderResults(ctx, tier, data) {
     var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
     var items2 = data.map(function (c) {
       var entry2 = buildSubstituteEntry(ctx, c.teacher, 2);
-      var label2 = c.teacher + ' 교사 (대강)';
+      var label2 = c.teacher + ' (대강)';
       return makeCandListItem(c.teacher + ' 교사', null, function () {
         selectSubstitute(ctx, c.teacher);
       }, entry2, label2);
@@ -1020,7 +1055,7 @@ function renderResults(ctx, tier, data) {
   } else if (tier === 3) {
     var items3 = data.map(function (c) {
       var entry3 = buildSubstituteEntry(ctx, c.teacher, 3);
-      var label3 = c.teacher + ' 교사 (대강, 참고용)';
+      var label3 = c.teacher + ' (대강, 참고용)';
       return makeCandListItem(c.teacher + ' 교사', null, function () {
         selectSubstitute(ctx, c.teacher);
       }, entry3, label3);

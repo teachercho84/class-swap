@@ -15,22 +15,24 @@
       <h1 id="pageTitle">수업 시간표 교체</h1>
       <div class="sub" id="pageSub">데이터를 불러오는 중…</div>
     </div>
-    <div class="teacher-picker">
-      <label for="teacherSelect">교사</label>
-      <select id="teacherSelect" disabled><option>불러오는 중…</option></select>
-    </div>
   </header>
 
   <div id="errorBanner"></div>
 
   <div id="appBody" style="display:none;">
-    <div class="legend">
-      <span><i class="swatch normal"></i>일반 수업</span>
-      <span><i class="swatch move"></i>이동수업</span>
-    </div>
-
+    <!-- 메인 패널: 메인 시간표 + 교체·대강 후보 + 출결 패널 -->
     <div class="main-row">
       <div class="board-col">
+        <div class="board-top-row">
+          <div class="teacher-picker">
+            <label for="teacherSelect">교사</label>
+            <select id="teacherSelect" disabled><option>불러오는 중…</option></select>
+          </div>
+          <div class="legend">
+            <span><i class="swatch normal"></i>일반 수업</span>
+            <span><i class="swatch move"></i>이동수업</span>
+          </div>
+        </div>
         <div class="board-scroll">
           <table class="board" id="boardTable"></table>
         </div>
@@ -40,40 +42,58 @@
           <div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>
         </div>
       </div>
-    </div>
-
-    <div id="absencePanel" class="absence-panel">
-      <div class="absence-panel-head">
-        <span class="absence-panel-title">출장·결근 관리</span>
-        <div class="absence-panel-controls">
-          <select id="absenceDaySelect"></select>
-          <span class="absence-period-checks" id="absencePeriodChecks">
-            <label><input type="checkbox" id="absencePeriodAll"> 전체</label>
-            <label><input type="checkbox" value="1"> 1</label>
-            <label><input type="checkbox" value="2"> 2</label>
-            <label><input type="checkbox" value="3"> 3</label>
-            <label><input type="checkbox" value="4"> 4</label>
-            <label><input type="checkbox" value="5"> 5</label>
-            <label><input type="checkbox" value="6"> 6</label>
-            <label><input type="checkbox" value="7"> 7</label>
-          </span>
-          <button type="button" id="absenceAddBtn">추가</button>
-          <button type="button" id="assignResetBtn">초기화</button>
-          <button type="button" id="manualAssignBtn">수동으로 대체 찾기</button>
-          <button type="button" id="autoAssignBtn">자동으로 대체 찾기</button>
+      <!-- 출결 패널: 출장·결근 등록 및 대체 찾기 -->
+      <div class="absence-col">
+        <div id="absencePanel" class="absence-panel">
+          <div class="absence-panel-head">
+            <div class="absence-panel-title-row">
+              <span class="absence-panel-title">출장·결근 관리</span>
+              <label class="option-checkbox">
+                <input type="checkbox" id="preferSubstituteCheckbox">
+                대강 우선
+              </label>
+            </div>
+            <div class="absence-panel-controls">
+              <div class="absence-control-row">
+                <div class="absence-day-picks" id="absenceDayPicks"></div>
+                <select id="absenceDaySelect" hidden></select>
+              </div>
+              <div class="absence-control-row">
+                <span class="absence-period-checks" id="absencePeriodChecks">
+                  <label><input type="checkbox" id="absencePeriodAll"> 전체</label>
+                  <label><input type="checkbox" value="1"> 1</label>
+                  <label><input type="checkbox" value="2"> 2</label>
+                  <label><input type="checkbox" value="3"> 3</label>
+                  <label><input type="checkbox" value="4"> 4</label>
+                  <label><input type="checkbox" value="5"> 5</label>
+                  <label><input type="checkbox" value="6"> 6</label>
+                  <label><input type="checkbox" value="7"> 7</label>
+                </span>
+              </div>
+              <div class="absence-control-row">
+                <button type="button" id="absenceAddBtn">추가</button>
+                <button type="button" id="assignResetBtn">초기화</button>
+                <button type="button" id="manualAssignBtn">수동 찾기</button>
+                <button type="button" id="autoAssignBtn">자동 찾기</button>
+              </div>
+            </div>
+          </div>
+          <div id="absenceTagList" class="absence-tag-list"></div>
+        </div>
+        <div id="assignSlotPanel" class="assign-slot-panel">
+          <div id="manualAssignResults" class="manual-assign-results"></div>
+          <div id="autoAssignResults" class="auto-assign-results"></div>
         </div>
       </div>
-      <label class="option-checkbox">
-        <input type="checkbox" id="preferSubstituteCheckbox">
-        대강 우선 — 체크하면 맞교체·이동수업(1순위) 대신 대강(2·3순위) 후보를 먼저 보여줍니다
-      </label>
-      <div id="absenceTagList" class="absence-tag-list"></div>
-      <div id="manualAssignResults" class="manual-assign-results"></div>
-      <div id="manualAssignBoards" class="preview-cols"></div>
-      <div id="autoAssignResults" class="auto-assign-results"></div>
-      <div id="autoAssignBoards" class="preview-cols"></div>
     </div>
 
+    <!-- 대체 찾기 결과: 최종 미리보기(전체 폭) -->
+    <section id="assignResultSection" class="preview-section">
+      <div id="manualAssignBoards" class="preview-cols"></div>
+      <div id="autoAssignBoards" class="preview-cols"></div>
+    </section>
+
+    <!-- 미리보기 패널: 교체 적용 전후 시간표 비교 -->
     <section id="previewSection" class="preview-section" style="display:none;">
       <div class="preview-head">
         <h2>변경 후 시간표 미리보기</h2>

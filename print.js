@@ -177,7 +177,7 @@ export function getCardDateInfo(data, teacher) {
     var short = formatShort(dateOf(c.key, parts[0], parseInt(parts[1], 10)));
     if (short) dateMap[cellKey] = short;
   });
-  return { titleText: texts.join(' / '), dateMap: dateMap };
+  return { titleParts: texts, dateMap: dateMap };
 }
 
 // ---------- 팝업 ----------

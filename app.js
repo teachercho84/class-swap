@@ -495,7 +495,7 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
 // 지워버리는 식으로 구현돼 있어서(matching.js), 그대로 읽으면 removed 자리가 그냥
 // 빈 칸으로 보인다. preview.js의 computeModifiedSchedule과 똑같이, 원본은 그대로
 // 두고(줄표시로 보이게) added 자리만 diff에 담아온 새 내용으로 덮어쓴다.
-// dateInfo({ titleText, dateMap })가 있으면(인쇄용 날짜를 입력한 뒤) 이름 옆에 날짜 문구를
+// dateInfo({ titleParts, dateMap })가 있으면(인쇄용 날짜를 입력한 뒤) 이름 옆에 날짜 문구를
 // 붙이고, 바뀐 칸 안에도 날짜를 넣는다.
 function buildScheduleCard(title, teacher, dayDiff, dateInfo) {
   var col = document.createElement('div');
@@ -503,10 +503,18 @@ function buildScheduleCard(title, teacher, dayDiff, dateInfo) {
   var titleEl = document.createElement('div');
   titleEl.className = 'preview-col-title';
   titleEl.textContent = title;
-  if (dateInfo && dateInfo.titleText) {
+  if (dateInfo && dateInfo.titleParts.length > 0) {
+    // 쌍마다 별도 span(줄바꿈 금지)으로 만들어, 제목이 길어져도 "<->" 한가운데서 갈라지지 않고
+    // 쌍 사이에서만 줄이 바뀌게 한다.
     var datesEl = document.createElement('span');
     datesEl.className = 'card-dates';
-    datesEl.textContent = dateInfo.titleText;
+    dateInfo.titleParts.forEach(function (part, i) {
+      if (i > 0) datesEl.appendChild(document.createTextNode(' / '));
+      var partEl = document.createElement('span');
+      partEl.className = 'card-date-pair';
+      partEl.textContent = part;
+      datesEl.appendChild(partEl);
+    });
     titleEl.appendChild(document.createTextNode(' '));
     titleEl.appendChild(datesEl);
   }

@@ -725,3 +725,105 @@ table.mini-board .cell-btn:hover { background: transparent; }
   box-shadow: inset 0 0 0 1.5px var(--danger);
 }
 .slot-removed .subj, .slot-removed .cls { text-decoration: line-through; opacity: 0.7; }
+
+/* ---- 인쇄하기 (날짜 입력 팝업 + 최종 변경 시간표 인쇄) ---- */
+.print-open-btn {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  transition: opacity .15s ease;
+}
+.print-open-btn:hover { opacity: .88; }
+.print-open-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* 카드 제목의 "이름 옆" 날짜 문구와 바뀐 칸 안 날짜 */
+.card-dates { margin-left: 4px; font-weight: 500; color: var(--accent); font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+.cell-btn .cell-date { font-size: 0.68rem; font-weight: 600; color: var(--ink-soft); line-height: 1.2; }
+table.mini-board.has-dates td.slot { height: 62px; }
+table.mini-board.has-dates .cell-btn, table.mini-board.has-dates .cell-disabled, table.mini-board.has-dates .cell-empty { min-height: 62px; height: 62px; }
+.slot-removed .cell-date { text-decoration: line-through; opacity: 0.7; }
+
+.print-headline { display: none; }
+
+.print-dialog {
+  border: none;
+  border-radius: 14px;
+  padding: 22px 24px;
+  width: min(560px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  background: var(--paper);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+}
+.print-dialog::backdrop { background: rgba(17, 24, 39, .45); }
+.print-dialog h3 { margin: 0 0 14px; font-size: 1.05rem; font-weight: 600; }
+.print-dialog[open] #printStepDate:not([hidden]) { display: flex; flex-direction: column; max-height: calc(100vh - 96px); }
+.print-base-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 0.92rem; font-weight: 500; }
+.print-dialog input[type="date"] {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+}
+.print-dialog input[type="date"].is-invalid { border-color: var(--danger); background: var(--danger-soft); }
+.print-hint { font-size: 0.82rem; color: var(--ink-soft); margin: 8px 0 12px; }
+.print-event-list { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 12px; padding-right: 2px; }
+.print-event-group { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.print-event-head { font-size: 0.85rem; font-weight: 600; margin-bottom: 8px; }
+.print-event-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 0.88rem; padding: 3px 0; }
+.print-error { min-height: 1.2em; margin-top: 10px; font-size: 0.85rem; color: var(--danger); }
+.print-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.print-choose-btns { display: flex; flex-direction: column; gap: 10px; margin: 6px 0 4px; }
+.print-dialog button {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--free);
+  color: var(--ink);
+  text-align: center;
+  transition: background .15s ease;
+}
+.print-dialog button:hover { background: var(--line); }
+.print-dialog button.is-primary { background: var(--accent); color: var(--accent-ink); }
+.print-dialog button.is-primary:hover { opacity: .88; background: var(--accent); }
+.print-dialog button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.print-dialog button:disabled { cursor: not-allowed; opacity: .5; }
+.print-dialog small { font-weight: 400; color: var(--ink-soft); }
+
+@page { size: A4 portrait; margin: 12mm; }
+@media print {
+  /* 시스템이 다크 모드여도 종이엔 항상 밝은 색으로 */
+  :root, :root:not([data-theme="light"]), :root[data-theme="dark"] {
+    --bg: #FFFFFF; --paper: #FFFFFF; --ink: #111827; --ink-soft: #4B5563; --line: #D1D5DB; --line-soft: #E5E7EB;
+    --header-bg: #F3F4F6; --accent: #4F46E5; --accent-ink: #FFFFFF; --accent-soft: #EEF0FF;
+    --warm: #3B82F6; --warm-soft: #DCEAFE; --added: #16A34A; --added-soft: #DCFCE7;
+    --free: #F3F4F6; --free-ink: #6B7280; --changche: #F3F4F6; --changche-ink: #6B7280;
+    --danger: #EF4444; --danger-soft: #FDECEC; --shadow-sm: none; --shadow: none;
+  }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body.printing-boards { background: #fff; padding: 0; }
+  body.printing-boards .masthead,
+  body.printing-boards #errorBanner,
+  body.printing-boards .main-row,
+  body.printing-boards #previewSection,
+  body.printing-boards #assignResultSection .preview-head,
+  body.printing-boards .print-dialog { display: none !important; }
+  body.printing-boards .wrap { max-width: none; }
+  body.printing-boards #assignResultSection { display: block !important; margin-top: 0; padding-top: 0; animation: none; }
+  body.printing-boards .print-headline { display: block; font-size: 1.15rem; font-weight: 700; margin-bottom: 14px; }
+  body.printing-boards .preview-cols { gap: 16px; }
+  body.printing-boards .preview-col { break-inside: avoid; }
+}

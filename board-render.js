@@ -10,6 +10,7 @@ function cellState(rec) {
 // getRec(day,period)가 레코드를 돌려주고, opts.onCellClick이 있으면 그 셀에 클릭 핸들러를
 // 붙인다(미리보기는 안 붙여서 읽기 전용이 됨). opts.diffMap이 있으면 "요일_교시" 키로
 // 추가 CSS 클래스(slot-added/slot-covered)와 라벨을 얹는다(미리보기 diff 표시용).
+// opts.dateMap이 있으면 같은 키의 칸 안에 작은 날짜 문구(예: "9/23")를 덧붙인다(인쇄용).
 export function renderBoardInto(table, dayList, getRec, opts) {
   opts = opts || {};
   table.innerHTML = '';
@@ -72,6 +73,13 @@ export function renderBoardInto(table, dayList, getRec, opts) {
         clsSpan.textContent = rec.className || '';
         btn.appendChild(subjSpan);
         btn.appendChild(clsSpan);
+        var dateText = opts.dateMap ? opts.dateMap[day + '_' + period] : null;
+        if (dateText) {
+          var dateSpan = document.createElement('span');
+          dateSpan.className = 'cell-date';
+          dateSpan.textContent = dateText;
+          btn.appendChild(dateSpan);
+        }
         if (opts.onCellClick) {
           btn.addEventListener('click', (function (record, cellEl) {
             return function () { opts.onCellClick(record, cellEl); };

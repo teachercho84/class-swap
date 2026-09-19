@@ -10,6 +10,7 @@ import {
   cloneScheduleMap, applySwapToWorkingMaps, applyRelocateToWorkingMaps, applySubstituteToWorkingMaps
 } from './matching.js';
 import { renderBoardInto } from './board-render.js';
+import { collectChangeData, getCardDateInfo, initPrint, resetPrintState } from './print.js';
 import {
   hidePreview, selectMoveSetSwap, selectMoveComboSwap, selectNormalSwap, selectSubstitute
 } from './preview.js';
@@ -75,6 +76,7 @@ function clearResults() {
   if (manualBoardsEl) manualBoardsEl.innerHTML = '';
   manualAssignState = { total: 0, diffsByCtxKey: {} };
   manualWorkingState = { order: [], byKey: {}, teacherMap: null, classMap: null, conflicts: [] };
+  resetPrintState();
   updateAssignResultVisibility();
 }
 
@@ -493,16 +495,25 @@ function resolveAutoAssignFor(ctx, absences, teacherMap, classMap) {
 // 지워버리는 식으로 구현돼 있어서(matching.js), 그대로 읽으면 removed 자리가 그냥
 // 빈 칸으로 보인다. preview.js의 computeModifiedSchedule과 똑같이, 원본은 그대로
 // 두고(줄표시로 보이게) added 자리만 diff에 담아온 새 내용으로 덮어쓴다.
-function buildScheduleCard(title, teacher, dayDiff) {
+// dateInfo({ titleText, dateMap })가 있으면(인쇄용 날짜를 입력한 뒤) 이름 옆에 날짜 문구를
+// 붙이고, 바뀐 칸 안에도 날짜를 넣는다.
+function buildScheduleCard(title, teacher, dayDiff, dateInfo) {
   var col = document.createElement('div');
   col.className = 'preview-col';
   var titleEl = document.createElement('div');
   titleEl.className = 'preview-col-title';
   titleEl.textContent = title;
+  if (dateInfo && dateInfo.titleText) {
+    var datesEl = document.createElement('span');
+    datesEl.className = 'card-dates';
+    datesEl.textContent = dateInfo.titleText;
+    titleEl.appendChild(document.createTextNode(' '));
+    titleEl.appendChild(datesEl);
+  }
   var scroll = document.createElement('div');
   scroll.className = 'board-scroll';
   var table = document.createElement('table');
-  table.className = 'board mini-board';
+  table.className = 'board mini-board' + (dateInfo ? ' has-dates' : '');
   scroll.appendChild(table);
   col.appendChild(titleEl);
   col.appendChild(scroll);
@@ -512,7 +523,7 @@ function buildScheduleCard(title, teacher, dayDiff) {
       return { teacher: teacher, day: day, period: period, subject: diffEntry.subject, className: diffEntry.className, isFree: false, isChangChe: false, moveGroupId: null };
     }
     return getRecord(STATE.teacherScheduleMap, teacher, day, period);
-  }, { diffMap: dayDiff });
+  }, { diffMap: dayDiff, dateMap: dateInfo ? dateInfo.dateMap : null });
   return col;
 }
 
@@ -819,31 +830,12 @@ function renderManualAssignBoards() {
   var boardsEl = document.getElementById(ASSIGN_SURFACES[activeAssignSurface].boards);
   if (!boardsEl) return;
   boardsEl.innerHTML = '';
-  var diffsByTeacher = {};
-  // 결시 슬롯(day_period) 순서대로 먼저 훑어야, 아래에서 만드는 diffsByTeacher의
-  // 삽입 순서(= Object.keys 순서)가 곧 "각 교사가 처음 담당하게 된 결시 시간" 순서가
-  // 된다 — sort는 안정 정렬이라 바로 아래서 "본인 우선"만 얹어도 이 순서가 유지된다.
-  var sortedKeys = Object.keys(manualAssignState.diffsByCtxKey).sort(function (a, b) {
-    var aParts = a.split('_'), bParts = b.split('_');
-    var dayDiff = STATE.dayList.indexOf(aParts[0]) - STATE.dayList.indexOf(bParts[0]);
-    if (dayDiff !== 0) return dayDiff;
-    return parseInt(aParts[1], 10) - parseInt(bParts[1], 10);
-  });
-  sortedKeys.forEach(function (key) {
-    manualAssignState.diffsByCtxKey[key].forEach(function (d) {
-      if (!diffsByTeacher[d.teacher]) diffsByTeacher[d.teacher] = {};
-      diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type, subject: d.subject, className: d.className };
-    });
-  });
-  var teacherKeys = Object.keys(diffsByTeacher);
-  teacherKeys.sort(function (a, b) {
-    if (a === STATE.currentTeacher) return -1;
-    if (b === STATE.currentTeacher) return 1;
-    return 0;
-  });
-  teacherKeys.forEach(function (teacher) {
+  // 슬롯 순서·교사별 칸 집계·"본인 우선" 정렬은 print.js의 collectChangeData가 맡는다 —
+  // 인쇄 팝업(날짜 입력)도 같은 집계를 써야 카드와 날짜 목록이 어긋나지 않는다.
+  var data = collectChangeData(manualAssignState.diffsByCtxKey);
+  data.teacherOrder.forEach(function (teacher) {
     var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
-    boardsEl.appendChild(buildScheduleCard(title, teacher, diffsByTeacher[teacher]));
+    boardsEl.appendChild(buildScheduleCard(title, teacher, data.teachers[teacher].cells, getCardDateInfo(data, teacher)));
   });
   updateAssignResultVisibility();
 }
@@ -1140,6 +1132,12 @@ function wireStaticUI() {
   document.getElementById('previewCloseBtn').addEventListener('click', hidePreview);
   wireAbsencePanel();
   wireOptionsPanel();
+  initPrint({
+    getDiffsByCtxKey: function () { return manualAssignState.diffsByCtxKey; },
+    getCtx: function (key) { return manualWorkingState.byKey[key] ? manualWorkingState.byKey[key].ctx : null; },
+    getAbsentTeacher: function () { return STATE.currentTeacher; },
+    onDatesConfirmed: renderManualAssignBoards
+  });
 }
 
 document.addEventListener('DOMContentLoaded', function () {

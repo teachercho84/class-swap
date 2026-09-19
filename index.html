@@ -115,12 +115,45 @@
 
     <!-- 대체 찾기 결과: 최종 미리보기(전체 폭) -->
     <section id="assignResultSection" class="preview-section" style="display:none;">
-      <div class="preview-head"><h2>최종 변경 시간표</h2></div>
+      <div class="preview-head">
+        <h2>최종 변경 시간표</h2>
+        <button type="button" id="printOpenBtn" class="print-open-btn">인쇄하기</button>
+      </div>
+      <div id="printHeadline" class="print-headline"></div>
       <div id="manualAssignBoards" class="preview-cols"></div>
       <div id="autoAssignBoards" class="preview-cols"></div>
     </section>
   </div>
 </div>
+
+<dialog id="printDialog" class="print-dialog">
+  <div id="printStepDate">
+    <h3>인쇄하기 — 날짜 입력</h3>
+    <div class="print-base-row">
+      <label for="printBaseDate" id="printBaseLabel">기준 날짜</label>
+      <input type="date" id="printBaseDate">
+    </div>
+    <p class="print-hint">기준 날짜를 넣으면 같은 주의 나머지 요일 날짜가 자동으로 채워집니다. 다른 주로 넘어가는 교체는 아래 날짜를 직접 고쳐 주세요.</p>
+    <div id="printEventList" class="print-event-list"></div>
+    <div id="printDateError" class="print-error" role="alert"></div>
+    <div class="print-actions">
+      <button type="button" id="printCancelBtn">취소</button>
+      <button type="button" id="printNextBtn" class="is-primary">다음</button>
+    </div>
+  </div>
+  <div id="printStepChoose" hidden>
+    <h3>무엇을 출력할까요?</h3>
+    <p id="printDateSummary" class="print-hint"></p>
+    <div class="print-choose-btns">
+      <button type="button" id="printBoardsBtn" class="is-primary">최종 변경 시간표 출력</button>
+      <button type="button" id="printJournalBtn" disabled>수업 교체 일지 출력 <small>(준비 중)</small></button>
+    </div>
+    <div class="print-actions">
+      <button type="button" id="printBackBtn">날짜 다시 입력</button>
+      <button type="button" id="printCloseBtn">닫기</button>
+    </div>
+  </div>
+</dialog>
 
 <script type="module" src="app.js"></script>
 </body>

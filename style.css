@@ -829,20 +829,21 @@ table.mini-board.has-dates .cell-btn, table.mini-board.has-dates .cell-disabled,
      표 행의 %·flex 늘리기를 Chrome과 다르게 해석해서 카드가 커지고 7교시 행이 다음 장으로
      넘어갔다. 또 Safari는 인쇄할 때 내용을 세로로 약 8% 키워 출력하고 실제 내용 영역도
      약 269mm뿐이라, 높이 예산은 Safari 기준으로 잡는다:
-     머리줄 10mm + 카드 2줄(113mm×2) + 간격 4mm = 240mm → ×1.08 ≈ 259mm ≤ 269mm.
-     (Chrome은 그대로 240mm라 아래쪽이 조금 남는다.) */
+     최악(제목 3줄인 카드 2줄): 머리줄 10 + 카드 115×2 + 간격 6 = 246mm → ×1.08 ≈ 266mm
+     (+ 위 여백 12mm = 278mm ≤ 내용 끝 285mm). 줄 높이는 카드 내용에 맞춰 자동(auto)이라
+     제목이 짧으면 그만큼 아래가 더 비므로, 칸 높이(13.5mm)는 이 최악 예산이 허용하는 한도다. */
   body.printing-boards .print-pages { display: block; }
   .print-page { display: block; page-break-after: always; break-after: page; }
   .print-page:last-child { page-break-after: auto; break-after: auto; }
   .print-page-head { font-size: 12pt; font-weight: 700; height: 10mm; line-height: 1.2; }
-  .print-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 113mm 113mm; gap: 4mm 6mm; }
+  .print-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; gap: 6mm; }
   .print-grid .preview-col { display: block; min-width: 0; overflow: visible; }
   .print-grid .preview-col-title { font-size: 9pt; margin-bottom: 1.5mm; line-height: 1.3; }
   .print-grid .board-scroll { overflow: visible; }
   .print-grid table.board { height: auto; width: 100%; min-width: 0; table-layout: fixed; font-size: 8.5pt; }
   .print-grid table.mini-board thead tr { height: 6mm; }
-  .print-grid table.mini-board tbody tr { height: 12.5mm; } /* 7교시 행 균등, 고정 높이 */
-  .print-grid table.mini-board td.slot { height: 12.5mm; padding: 0; }
+  .print-grid table.mini-board tbody tr { height: 13.5mm; } /* 7교시 행 균등, 고정 높이 */
+  .print-grid table.mini-board td.slot { height: 13.5mm; padding: 0; }
   .print-grid table.mini-board .cell-btn,
   .print-grid table.mini-board .cell-disabled,
   .print-grid table.mini-board .cell-empty { min-height: 0; height: 100%; font-size: 8.5pt; line-height: 1.15; padding: 0 1px; gap: 0; }

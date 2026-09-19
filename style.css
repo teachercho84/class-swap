@@ -187,6 +187,12 @@ select#teacherSelect:focus-visible {
   gap: 8px;
   flex-wrap: wrap;
 }
+.absence-control-label {
+  flex: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
 .absence-panel-controls select {
   font-family: inherit;
   font-size: 0.88rem;
@@ -196,7 +202,7 @@ select#teacherSelect:focus-visible {
   border-radius: 8px;
   padding: 6px 10px;
 }
-.absence-day-picks { display: flex; gap: 6px; }
+.absence-day-picks { display: flex; gap: 6px; flex: 1; min-width: 0; }
 .absence-day-pick {
   all: unset;
   box-sizing: border-box;
@@ -213,7 +219,7 @@ select#teacherSelect:focus-visible {
 }
 .absence-day-pick:hover { background: var(--line); }
 .absence-day-pick.is-active { background: var(--accent); color: var(--accent-ink); }
-.absence-period-checks { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.absence-period-checks { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .absence-period-checks label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
 .absence-panel-controls button {
   all: unset;
@@ -262,9 +268,12 @@ select#teacherSelect:focus-visible {
 #assignResetBtn {
   background: var(--free);
   color: var(--ink-soft);
-  margin-left: auto; /* 이 버튼부터(초기화+수동+자동) 추가 옆 줄에서 오른쪽 끝으로 밀어낸다 */
 }
-#manualAssignBtn { background: var(--free); color: var(--ink); }
+#manualAssignBtn {
+  background: var(--free);
+  color: var(--ink);
+  margin-left: auto; /* 이 버튼부터(수동+자동) 추가·초기화 옆 줄에서 오른쪽 끝으로 밀어낸다 */
+}
 #autoAssignBtn { background: var(--accent); color: var(--accent-ink); }
 #assignResetBtn:hover, #manualAssignBtn:hover, #autoAssignBtn:hover { opacity: .9; }
 .auto-assign-results {

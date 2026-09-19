@@ -75,6 +75,18 @@ function clearResults() {
   if (manualBoardsEl) manualBoardsEl.innerHTML = '';
   manualAssignState = { total: 0, diffsByCtxKey: {} };
   manualWorkingState = { order: [], byKey: {}, teacherMap: null, classMap: null, conflicts: [] };
+  updateAssignResultVisibility();
+}
+
+// #assignResultSection은 CSS만으로 "비어있으면 숨기기"를 하면(:has()) 자동 찾기처럼
+// DOM을 반복 갱신하는 동안 매번 재평가되어 눈에 띄게 느려진다 — 그 대신 보드가 실제로
+// 채워지고/비워지는 지점에서 이 함수로 직접 display를 토글한다.
+function updateAssignResultVisibility() {
+  var section = document.getElementById('assignResultSection');
+  var manual = document.getElementById('manualAssignBoards');
+  var auto = document.getElementById('autoAssignBoards');
+  var hasContent = (manual && manual.children.length > 0) || (auto && auto.children.length > 0);
+  section.style.display = hasContent ? 'block' : 'none';
 }
 
 // ---------- 출장·결근 관리 ----------
@@ -799,7 +811,6 @@ function maybeRenderManualAssignBoards(conflicts) {
   }
   clearManualConflictBanner();
   if (Object.keys(manualAssignState.diffsByCtxKey).length === manualAssignState.total) {
-    hidePreview(); // 방금 마지막 슬롯의 미리보기 스트립이 전체 시간표와 내용이 겹치므로 접는다
     renderManualAssignBoards();
   }
 }
@@ -809,7 +820,16 @@ function renderManualAssignBoards() {
   if (!boardsEl) return;
   boardsEl.innerHTML = '';
   var diffsByTeacher = {};
-  Object.keys(manualAssignState.diffsByCtxKey).forEach(function (key) {
+  // 결시 슬롯(day_period) 순서대로 먼저 훑어야, 아래에서 만드는 diffsByTeacher의
+  // 삽입 순서(= Object.keys 순서)가 곧 "각 교사가 처음 담당하게 된 결시 시간" 순서가
+  // 된다 — sort는 안정 정렬이라 바로 아래서 "본인 우선"만 얹어도 이 순서가 유지된다.
+  var sortedKeys = Object.keys(manualAssignState.diffsByCtxKey).sort(function (a, b) {
+    var aParts = a.split('_'), bParts = b.split('_');
+    var dayDiff = STATE.dayList.indexOf(aParts[0]) - STATE.dayList.indexOf(bParts[0]);
+    if (dayDiff !== 0) return dayDiff;
+    return parseInt(aParts[1], 10) - parseInt(bParts[1], 10);
+  });
+  sortedKeys.forEach(function (key) {
     manualAssignState.diffsByCtxKey[key].forEach(function (d) {
       if (!diffsByTeacher[d.teacher]) diffsByTeacher[d.teacher] = {};
       diffsByTeacher[d.teacher][d.day + '_' + d.period] = { type: d.type, subject: d.subject, className: d.className };
@@ -819,12 +839,13 @@ function renderManualAssignBoards() {
   teacherKeys.sort(function (a, b) {
     if (a === STATE.currentTeacher) return -1;
     if (b === STATE.currentTeacher) return 1;
-    return STATE.teacherNames.indexOf(a) - STATE.teacherNames.indexOf(b);
+    return 0;
   });
   teacherKeys.forEach(function (teacher) {
     var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
     boardsEl.appendChild(buildScheduleCard(title, teacher, diffsByTeacher[teacher]));
   });
+  updateAssignResultVisibility();
 }
 
 function renderManualAssignList() {
@@ -925,9 +946,9 @@ function makeCandListItem(whoText, whereText, onSelect, entry, label) {
       btn.classList.add('is-selected');
       // "대체 찾기"(수동/자동) 진행 중에도 슬롯 하나를 고를 때마다 그 슬롯과 관련된
       // 교사만 좌우로 보여주는 미리보기 스트립을 띄운다 — 다음 슬롯을 열면
-      // handleCellClick이 hidePreview()로 접고, 마지막 슬롯까지 다 채워지면
-      // maybeRenderManualAssignBoards가 전체 시간표를 그리기 직전에 다시 접어서
-      // 전체 결과와 내용이 겹치지 않게 한다.
+      // handleCellClick이 hidePreview()로 접는다. 마지막 슬롯까지 다 채워져도 이
+      // 스트립은 그대로 두고(강제로 닫지 않음), 그 아래에 전체 최종 시간표
+      // (maybeRenderManualAssignBoards)가 함께 뜬다 — 둘 다 항상 같이 보여준다.
       onSelect();
       commitManualSelection(lastSelectedCtx, entry, label); // "수동으로 대체 찾기" 진행 기록 + 작업 사본 반영
     });

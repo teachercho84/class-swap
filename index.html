@@ -38,8 +38,17 @@
         </div>
       </div>
       <div class="side-col">
-        <div id="sidePanel" class="side-panel">
-          <div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>
+        <div class="side-card">
+          <div class="side-panel-head">
+            <span class="side-panel-title">교체·대강 후보</span>
+            <label class="option-checkbox">
+              <input type="checkbox" id="preferSubstituteCheckbox">
+              대강 우선
+            </label>
+          </div>
+          <div id="sidePanel" class="side-panel">
+            <div class="placeholder">칸을 클릭하면 교체·대강 후보가 여기에 표시됩니다.</div>
+          </div>
         </div>
       </div>
       <!-- 출결 패널: 출장·결근 등록 및 대체 찾기 -->
@@ -48,10 +57,6 @@
           <div class="absence-panel-head">
             <div class="absence-panel-title-row">
               <span class="absence-panel-title">출장·결강 관리</span>
-              <label class="option-checkbox">
-                <input type="checkbox" id="preferSubstituteCheckbox">
-                대강 우선
-              </label>
             </div>
             <div class="absence-panel-controls">
               <div class="absence-control-row">

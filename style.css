@@ -540,11 +540,6 @@ table.mini-board .cell-move .cell-btn::before {
 .results-title {
   font-size: 1.12rem;
   font-weight: 600;
-  margin-bottom: 4px;
-}
-.results-meta {
-  font-size: 0.9rem;
-  color: var(--ink-soft);
   margin-bottom: 18px;
 }
 /* .tier가 side-panel(플렉스 세로축) 안에서 남는 공간을 전부 차지하고, 그 안의
@@ -613,7 +608,7 @@ table.mini-board .cell-move .cell-btn::before {
 .cand-btn.is-selected .who { color: var(--accent-ink); }
 .cand-btn.is-selected .where { color: var(--accent-ink); opacity: .82; }
 
-.side-panel {
+.side-card {
   background: var(--paper);
   border-radius: 12px;
   box-shadow: var(--shadow);
@@ -626,6 +621,24 @@ table.mini-board .cell-move .cell-btn::before {
      .cand-list가 내부 스크롤을 맡을 수 있다. 왼쪽 시간표(교사 선택 한 줄 + 7교시 표)
      높이와 맞춘 값 — .absence-col의 max-height와 항상 같은 값으로 유지한다. */
   max-height: 600px;
+  display: flex;
+  flex-direction: column;
+}
+.side-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  margin-bottom: 14px;
+}
+.side-panel-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+}
+.side-panel {
+  flex: 1 1 auto;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   font-size: 0.95rem;

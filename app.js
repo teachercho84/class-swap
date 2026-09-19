@@ -1018,13 +1018,9 @@ function renderResults(ctx, tier, data) {
 
   var titleDiv = document.createElement('div');
   titleDiv.className = 'results-title';
-  titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + ' ' + ctx.period + '교시';
+  titleDiv.textContent = ctx.teacher + ' 교사 — ' + ctx.day + ' ' + ctx.period + '교시 ' +
+    ctx.subject + (ctx.className ? ' · ' + ctx.className : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
   body.appendChild(titleDiv);
-
-  var metaDiv = document.createElement('div');
-  metaDiv.className = 'results-meta';
-  metaDiv.textContent = ctx.subject + (ctx.className ? ' · ' + ctx.className : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
-  body.appendChild(metaDiv);
 
   if (tier === 1 && ctx.moveGroupId) {
     var groupA = STATE.moveGroupIndex[ctx.moveGroupId];

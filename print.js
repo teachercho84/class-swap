@@ -285,10 +285,35 @@ function confirmDates() {
   showStep('choose');
 }
 
-// 인쇄용 머리줄을 채우고 "최종 변경 시간표"만 남기도록 body 클래스를 얹은 뒤 인쇄한다.
-// 클래스는 afterprint에서 뗀다.
+// A4 한 장에 카드 4개(2×2). 브라우저가 흐름대로 자르게 두면 카드 높이·프린터 여백에 따라
+// 한 장에 2개만 놓이거나 잘리므로, 인쇄 직전에 화면 카드를 복제해 4개씩 "쪽" 단위로
+// 다시 묶는다(쪽 높이는 CSS에서 고정). 화면의 원본 카드는 건드리지 않는다.
+var CARDS_PER_PAGE = 4;
+
+function buildPrintPages() {
+  var cards = Array.prototype.slice.call(document.querySelectorAll('#manualAssignBoards .preview-col, #autoAssignBoards .preview-col'));
+  var host = $('printPages');
+  host.innerHTML = '';
+  var totalPages = Math.ceil(cards.length / CARDS_PER_PAGE);
+  for (var i = 0; i < totalPages; i++) {
+    var page = document.createElement('div');
+    page.className = 'print-page';
+    var head = document.createElement('div');
+    head.className = 'print-page-head';
+    head.textContent = hooks.getAbsentTeacher() + ' 교사 결근 — 변경 시간표' + (totalPages > 1 ? ' (' + (i + 1) + '/' + totalPages + '쪽)' : '');
+    var grid = document.createElement('div');
+    grid.className = 'print-grid';
+    cards.slice(i * CARDS_PER_PAGE, (i + 1) * CARDS_PER_PAGE).forEach(function (c) { grid.appendChild(c.cloneNode(true)); });
+    page.appendChild(head);
+    page.appendChild(grid);
+    host.appendChild(page);
+  }
+}
+
+// 쪽을 만든 뒤 "최종 변경 시간표"만 남기도록 body 클래스를 얹고 인쇄한다.
+// 클래스와 복제한 쪽은 afterprint에서 정리한다.
 function printBoards() {
-  $('printHeadline').textContent = hooks.getAbsentTeacher() + ' 교사 결근 — 변경 시간표';
+  buildPrintPages();
   $('printDialog').close();
   document.body.classList.add('printing-boards');
   window.print();
@@ -306,5 +331,8 @@ export function initPrint(h) {
   $('printCloseBtn').addEventListener('click', function () { $('printDialog').close(); });
   $('printBackBtn').addEventListener('click', function () { setError(''); showStep('date'); });
   $('printBoardsBtn').addEventListener('click', printBoards);
-  window.addEventListener('afterprint', function () { document.body.classList.remove('printing-boards'); });
+  window.addEventListener('afterprint', function () {
+    document.body.classList.remove('printing-boards');
+    $('printPages').innerHTML = '';
+  });
 }

@@ -749,7 +749,7 @@ table.mini-board.has-dates td.slot { height: 62px; }
 table.mini-board.has-dates .cell-btn, table.mini-board.has-dates .cell-disabled, table.mini-board.has-dates .cell-empty { min-height: 62px; height: 62px; }
 .slot-removed .cell-date { text-decoration: line-through; opacity: 0.7; }
 
-.print-headline { display: none; }
+.print-pages { display: none; }
 
 .print-dialog {
   border: none;
@@ -822,8 +822,27 @@ table.mini-board.has-dates .cell-btn, table.mini-board.has-dates .cell-disabled,
   body.printing-boards #assignResultSection .preview-head,
   body.printing-boards .print-dialog { display: none !important; }
   body.printing-boards .wrap { max-width: none; }
-  body.printing-boards #assignResultSection { display: block !important; margin-top: 0; padding-top: 0; animation: none; }
-  body.printing-boards .print-headline { display: block; font-size: 1.15rem; font-weight: 700; margin-bottom: 14px; }
-  body.printing-boards .preview-cols { gap: 16px; }
-  body.printing-boards .preview-col { break-inside: avoid; }
+  body.printing-boards #assignResultSection { display: none !important; }
+
+  /* 한 쪽 = 머리줄 + 2×2 카드. 높이를 고정해 카드 수와 관계없이 항상 같은 모양으로 나온다
+     (내용 영역 273mm보다 약간 작게 잡아 반올림으로 빈 쪽이 생기지 않게 한다). */
+  body.printing-boards .print-pages { display: block; }
+  .print-page { height: 270mm; display: grid; grid-template-rows: auto 1fr; break-after: page; overflow: hidden; }
+  .print-page:last-child { break-after: auto; }
+  .print-page-head { font-size: 12pt; font-weight: 700; margin-bottom: 4mm; }
+  .print-grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 6mm; min-height: 0; }
+  .print-grid .preview-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .print-grid .preview-col-title { font-size: 10pt; margin-bottom: 1.5mm; line-height: 1.35; }
+  .print-grid .board-scroll { flex: 1 1 auto; min-height: 0; overflow: visible; }
+  .print-grid table.board { height: 100%; width: 100%; min-width: 0; table-layout: fixed; font-size: 8.5pt; }
+  .print-grid table.mini-board tbody tr { height: 13%; } /* 7교시 행을 균등하게(남는 높이는 요일 헤더 행) */
+  .print-grid table.mini-board td.slot { height: auto; padding: 0; }
+  .print-grid table.mini-board .cell-btn,
+  .print-grid table.mini-board .cell-disabled,
+  .print-grid table.mini-board .cell-empty { min-height: 0; height: 100%; font-size: 8.5pt; padding: 0 1px; }
+  .print-grid table.mini-board .subj { font-size: 8pt; }
+  .print-grid table.mini-board .cls { font-size: 8pt; }
+  .print-grid table.mini-board .cell-date { font-size: 7.5pt; }
+  .print-grid table.mini-board thead th { font-size: 8.5pt; padding: 1mm 0; }
+  .print-grid table.mini-board td.period-cell { font-size: 8pt; }
 }

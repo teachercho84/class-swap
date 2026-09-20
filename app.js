@@ -842,8 +842,11 @@ function renderManualAssignBoards() {
   // 인쇄 팝업(날짜 입력)도 같은 집계를 써야 카드와 날짜 목록이 어긋나지 않는다.
   var data = collectChangeData(manualAssignState.diffsByCtxKey);
   data.teacherOrder.forEach(function (teacher) {
-    var title = teacher + ' 교사' + (teacher === STATE.currentTeacher ? ' (결근)' : '');
-    boardsEl.appendChild(buildScheduleCard(title, teacher, data.teachers[teacher].cells, getCardDateInfo(data, teacher)));
+    var isAbsent = teacher === STATE.currentTeacher;
+    var title = teacher + ' 교사' + (isAbsent ? ' (결근)' : '');
+    // 결근 교사(본인) 카드는 교체 건수만큼 제목 줄이 길어지므로 날짜를 붙이지 않는다.
+    var dateInfo = isAbsent ? null : getCardDateInfo(data, teacher);
+    boardsEl.appendChild(buildScheduleCard(title, teacher, data.teachers[teacher].cells, dateInfo));
   });
   updateAssignResultVisibility();
 }

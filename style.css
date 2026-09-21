@@ -567,6 +567,21 @@ table.mini-board .cell-move .cell-btn::before {
   flex: none;
 }
 .tier.tier-1 h3 { color: var(--accent); }
+/* 순위가 둘 이상이면(2·3순위는 <details>로 접혀 함께 표시) 패널 자체가 스크롤되고,
+   각 .tier는 내용 높이만큼만 차지한다. <details>에 display:flex를 주면 브라우저마다
+   접힘 동작이 어긋나므로 block으로 되돌린다. */
+.side-panel.multi-tier { overflow-y: auto; padding-right: 4px; }
+.side-panel.multi-tier .tier { display: block; flex: none; }
+.side-panel.multi-tier .cand-list { overflow: visible; flex: none; }
+.tier summary {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: .04em;
+  cursor: pointer;
+  margin: 0;
+}
+.tier[open] > summary { margin-bottom: 10px; }
 .tier .note {
   font-size: 0.85rem;
   color: var(--ink-soft);

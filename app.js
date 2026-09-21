@@ -945,10 +945,11 @@ function computeAndRenderTiers(ctx) {
   var classMap = working.classMap;
 
   // "대강 우선"이 켜져 있으면 1순위(맞교체·이동수업) 계산·표시를 아예 건너뛰고
-  // 곧장 2·3순위 폴백으로 간다.
+  // 2·3순위만 보여준다.
+  var tier1 = null;
+  var tier1NonEmpty = false;
   if (!STATE.preferSubstitute) {
     var absences = currentAbsences();
-    var tier1, tier1NonEmpty;
     if (ctx.moveGroupId) {
       var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
       var setSwaps = findMoveSwapCandidates(ctx, STATE.moveGroupIndex, teacherMap, classMap, absences).setSwaps;
@@ -959,14 +960,19 @@ function computeAndRenderTiers(ctx) {
       tier1 = findNormalSwapCandidates(ctx, teacherMap, STATE.teacherNames, STATE.weekSlots, absences);
       tier1NonEmpty = tier1.length > 0;
     }
-    if (tier1NonEmpty) { renderResults(ctx, 1, tier1); return; }
   }
 
+  // 1순위가 있어도 특정 교사가 실제로는 못 하게 될 수 있으므로 2·3순위도 항상 함께
+  // 계산해 넘긴다(renderResults가 첫 번째 비어있지 않은 순위만 펼치고 나머지는 접는다).
+  // 3순위는 2순위에 이미 나온 교사를 표시에서만 뺀다 — 선택 시 검증(buildSubstituteEntry)은
+  // 원래대로 전체 후보 기준이다.
   var tier2 = findSubjectSubstituteCandidates(ctx, STATE.teacherSubjects, teacherMap, STATE.teacherNames);
-  if (tier2.length > 0) { renderResults(ctx, 2, tier2); return; }
+  var inTier2 = {};
+  tier2.forEach(function (c) { inTier2[c.teacher] = true; });
+  var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames)
+    .filter(function (c) { return !inTier2[c.teacher]; });
 
-  var tier3 = findFallbackSubstituteCandidates(ctx, teacherMap, STATE.teacherNames);
-  renderResults(ctx, 3, tier3);
+  renderResults(ctx, { tier1: tier1, tier1NonEmpty: tier1NonEmpty, tier2: tier2, tier3: tier3 });
 }
 
 // 후보 한 줄(<li>)을 만든다. onSelect가 있으면 클릭 가능한 버튼으로, 없으면(이동수업처럼
@@ -989,9 +995,10 @@ function makeCandListItem(whoText, whereText, onSelect, entry, label) {
       btn.appendChild(where);
     }
     btn.addEventListener('click', function () {
-      var list = btn.closest('.cand-list');
-      if (list) {
-        var prev = list.querySelector('.is-selected');
+      // 순위별 목록이 한 패널에 함께 있으므로 목록이 아니라 패널 전체에서 이전 선택을 푼다.
+      var panel = btn.closest('.side-panel');
+      if (panel) {
+        var prev = panel.querySelector('.is-selected');
         if (prev) prev.classList.remove('is-selected');
       }
       btn.classList.add('is-selected');
@@ -1019,11 +1026,12 @@ function makeCandListItem(whoText, whereText, onSelect, entry, label) {
   return li;
 }
 
-function appendTierBlock(container, tierClass, headingText, noteText, items) {
-  var tierDiv = document.createElement('div');
+// collapsed면 <details>로 접어서(제목 옆에 인원 수) 그린다.
+function appendTierBlock(container, tierClass, headingText, noteText, items, collapsed) {
+  var tierDiv = document.createElement(collapsed ? 'details' : 'div');
   tierDiv.className = 'tier ' + tierClass;
-  var h3 = document.createElement('h3');
-  h3.textContent = headingText;
+  var h3 = document.createElement(collapsed ? 'summary' : 'h3');
+  h3.textContent = headingText + (collapsed ? ' (' + items.length + '명)' : '');
   tierDiv.appendChild(h3);
   if (noteText) {
     var note = document.createElement('div');
@@ -1059,10 +1067,13 @@ function groupComboPairsByClass(pairs) {
   return order.map(function (cn) { return byClass[cn]; });
 }
 
-// 오른쪽 후보 패널에 후보 목록을 그린다. 1순위(일반)·2·3순위 후보는 클릭하면 선택되어
-// 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다. 이동수업 세트(1순위, moveGroupId
-// 있는 경우)는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만 보여준다.
-function renderResults(ctx, tier, data) {
+// 오른쪽 후보 패널에 후보 목록을 그린다. tiers는 computeAndRenderTiers가 계산한
+// { tier1, tier1NonEmpty, tier2, tier3 } — 비어있지 않은 순위를 1→2→3순위 순으로 모두
+// 그리되, 첫 번째 것만 펼치고 나머지는 접는다. 1순위(일반)·2·3순위 후보는 클릭하면
+// 선택되어 그리드 하단에 "교체/대강 후 시간표" 미리보기가 뜬다. 이동수업 세트(1순위,
+// moveGroupId 있는 경우)는 교사가 여러 명 엮여 있어 미리보기 대상에서 제외 — 텍스트로만
+// 보여준다.
+function renderResults(ctx, tiers) {
   var body = document.getElementById('sidePanel');
   body.innerHTML = '';
   var absences = currentAbsences();
@@ -1073,7 +1084,20 @@ function renderResults(ctx, tier, data) {
     ctx.subject + (ctx.className ? ' · ' + ctx.className : '') + (ctx.moveGroupId ? ' · 이동수업 세트' : '');
   body.appendChild(titleDiv);
 
-  if (tier === 1 && ctx.moveGroupId) {
+  var blocks = [];
+  if (tiers.tier1NonEmpty) blocks.push(buildTier1Block(ctx, tiers.tier1, absences));
+  if (tiers.tier2.length > 0) blocks.push(buildTier2Block(ctx, tiers.tier2));
+  // 어느 순위에도 후보가 없을 때만 3순위 블록으로 "후보 없음" 안내를 보여준다.
+  if (tiers.tier3.length > 0 || blocks.length === 0) blocks.push(buildTier3Block(ctx, tiers.tier3));
+
+  body.classList.toggle('multi-tier', blocks.length > 1);
+  blocks.forEach(function (b, i) {
+    appendTierBlock(body, b.tierClass, b.heading, b.note, b.items, i > 0);
+  });
+}
+
+function buildTier1Block(ctx, data, absences) {
+  if (ctx.moveGroupId) {
     var groupA = STATE.moveGroupIndex[ctx.moveGroupId];
     var items0 = [];
     data.setSwaps.forEach(function (s) {
@@ -1099,41 +1123,45 @@ function renderResults(ctx, tier, data) {
         selectMoveComboSwap(ctx, groupA, combo);
       }, entryC, labelC));
     });
-    appendTierBlock(body, 'tier-1', '1순위: 세트 이동/교체 가능', null, items0);
-  } else if (tier === 1) {
-    var sorted1 = data.slice().sort(function (a, b) {
-      var dayDiff = STATE.dayList.indexOf(a.day) - STATE.dayList.indexOf(b.day);
-      if (dayDiff !== 0) return dayDiff;
-      return a.period - b.period;
-    });
-    var items1 = sorted1.map(function (c) {
-      var entryN = buildNormalSwapEntry(ctx, c, absences);
-      var labelN = c.teacher + ' (교체, ' + c.day + ' ' + c.period + '교시 · ' + c.subject + ')';
-      return makeCandListItem(c.teacher + ' 교사', c.day + ' ' + c.period + '교시 (' + c.className + ' ' + c.subject + ')', function () {
-        selectNormalSwap(ctx, c);
-      }, entryN, labelN);
-    });
-    appendTierBlock(body, 'tier-1', '1순위: 맞교체 가능', null, items1);
-  } else if (tier === 2) {
-    var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
-    var items2 = data.map(function (c) {
-      var entry2 = buildSubstituteEntry(ctx, c.teacher, 2);
-      var label2 = c.teacher + ' (대강)';
-      return makeCandListItem(c.teacher + ' 교사', null, function () {
-        selectSubstitute(ctx, c.teacher);
-      }, entry2, label2);
-    });
-    appendTierBlock(body, 'tier-2', '2순위: 동교과 대강 후보', note2, items2);
-  } else if (tier === 3) {
-    var items3 = data.map(function (c) {
-      var entry3 = buildSubstituteEntry(ctx, c.teacher, 3);
-      var label3 = c.teacher + ' (대강, 참고용)';
-      return makeCandListItem(c.teacher + ' 교사', null, function () {
-        selectSubstitute(ctx, c.teacher);
-      }, entry3, label3);
-    });
-    appendTierBlock(body, 'tier-3', '3순위: 전체 대강 후보 — 교과 무관, 참고용', '교과가 다를 수 있으니 참고만 하세요.', items3);
+    return { tierClass: 'tier-1', heading: '1순위: 세트 이동/교체 가능', note: null, items: items0 };
   }
+
+  var sorted1 = data.slice().sort(function (a, b) {
+    var dayDiff = STATE.dayList.indexOf(a.day) - STATE.dayList.indexOf(b.day);
+    if (dayDiff !== 0) return dayDiff;
+    return a.period - b.period;
+  });
+  var items1 = sorted1.map(function (c) {
+    var entryN = buildNormalSwapEntry(ctx, c, absences);
+    var labelN = c.teacher + ' (교체, ' + c.day + ' ' + c.period + '교시 · ' + c.subject + ')';
+    return makeCandListItem(c.teacher + ' 교사', c.day + ' ' + c.period + '교시 (' + c.className + ' ' + c.subject + ')', function () {
+      selectNormalSwap(ctx, c);
+    }, entryN, labelN);
+  });
+  return { tierClass: 'tier-1', heading: '1순위: 맞교체 가능', note: null, items: items1 };
+}
+
+function buildTier2Block(ctx, data) {
+  var note2 = ctx.subject.trim() === '진로' ? '담당교과 무관 — 진로 수업은 아무 교사나 대강 가능합니다.' : null;
+  var items2 = data.map(function (c) {
+    var entry2 = buildSubstituteEntry(ctx, c.teacher, 2);
+    var label2 = c.teacher + ' (대강)';
+    return makeCandListItem(c.teacher + ' 교사', null, function () {
+      selectSubstitute(ctx, c.teacher);
+    }, entry2, label2);
+  });
+  return { tierClass: 'tier-2', heading: '2순위: 동교과 대강 후보', note: note2, items: items2 };
+}
+
+function buildTier3Block(ctx, data) {
+  var items3 = data.map(function (c) {
+    var entry3 = buildSubstituteEntry(ctx, c.teacher, 3);
+    var label3 = c.teacher + ' (대강, 참고용)';
+    return makeCandListItem(c.teacher + ' 교사', null, function () {
+      selectSubstitute(ctx, c.teacher);
+    }, entry3, label3);
+  });
+  return { tierClass: 'tier-3', heading: '3순위: 전체 대강 후보 — 교과 무관, 참고용', note: '교과가 다를 수 있으니 참고만 하세요.', items: items3 };
 }
 
 // ---------- cross validation ----------

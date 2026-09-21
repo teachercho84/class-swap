@@ -1,4 +1,5 @@
 import { STATE } from './state.js';
+import { buildPlanData, renderPlanHtml, buildClassNotices, renderClassNoticesHtml } from './plan.js';
 
 // ---------- 인쇄하기: 날짜 입력 → 출력 선택 ----------
 // 앱 내부 데이터는 계속 "요일_교시"만 다룬다. 날짜는 이 모듈에서만, 인쇄를 위해 입력받아
@@ -12,12 +13,14 @@ import { STATE } from './state.js';
 
 var WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'];
 
-var printState = { base: '', dates: {}, edited: {} };
+var PLAN_DEFAULT_REASON = '출장';
+
+var printState = { base: '', dates: {}, edited: {}, planReason: PLAN_DEFAULT_REASON, planNote: '' };
 var hooks = null;
 var dialogData = null; // 팝업이 열려 있는 동안의 collectChangeData 결과
 
 export function resetPrintState() {
-  printState = { base: '', dates: {}, edited: {} };
+  printState = { base: '', dates: {}, edited: {}, planReason: PLAN_DEFAULT_REASON, planNote: '' };
 }
 
 // ---------- 날짜 유틸 ----------
@@ -194,6 +197,7 @@ function setError(msg) { $('printDateError').textContent = msg || ''; }
 function showStep(step) {
   $('printStepDate').hidden = step !== 'date';
   $('printStepChoose').hidden = step !== 'choose';
+  $('printStepPlan').hidden = step !== 'plan';
 }
 
 function buildEventList(data, baseDay) {
@@ -310,12 +314,70 @@ function buildPrintPages() {
   }
 }
 
+// ---------- PDF 저장 파일명 ----------
+// Safari의 "PDF로 저장" 기본 파일명은 페이지 제목(document.title)이다. 인쇄하는 동안에만
+// "<출력물 이름>_<교사>_<결강 날짜 범위>"로 바꾸고 afterprint에서 원래 제목으로 되돌린다
+// (화면에 보이는 제목은 그대로). 종이 인쇄에는 영향이 없다.
+var savedTitle = null;
+
+// 결강 날짜 범위 '0929-0930'(하루면 '0929'). 날짜가 비어 있으면 ''.
+function absenceDateRange() {
+  var diffs = hooks.getDiffsByCtxKey();
+  var isos = [];
+  Object.keys(diffs).forEach(function (key) {
+    var ctx = hooks.getCtx(key);
+    var p = key.split('_');
+    var iso = dateOf(key, ctx ? ctx.day : p[0], ctx ? ctx.period : parseInt(p[1], 10));
+    if (parseIso(iso)) isos.push(iso);
+  });
+  if (isos.length === 0) return '';
+  isos.sort();
+  var mmdd = function (iso) { return iso.slice(5, 7) + iso.slice(8, 10); };
+  var first = mmdd(isos[0]);
+  var last = mmdd(isos[isos.length - 1]);
+  return first === last ? first : first + '-' + last;
+}
+
+function setPrintTitle(name) {
+  var range = absenceDateRange();
+  if (savedTitle === null) savedTitle = document.title;
+  document.title = name + '_' + hooks.getAbsentTeacher() + (range ? '_' + range : '');
+}
+
+function restoreTitle() {
+  if (savedTitle === null) return;
+  document.title = savedTitle;
+  savedTitle = null;
+}
+
 // 쪽을 만든 뒤 "최종 변경 시간표"만 남기도록 body 클래스를 얹고 인쇄한다.
 // 클래스와 복제한 쪽은 afterprint에서 정리한다.
 function printBoards() {
   buildPrintPages();
   $('printDialog').close();
   document.body.classList.add('printing-boards');
+  setPrintTitle('최종 변경 시간표');
+  window.print();
+}
+
+// 수업교체 및 보강 계획서(서식1): 사유·보강계획을 받는 단계를 거쳐 인쇄한다.
+// 최종 변경 시간표 출력과 달리 화면 카드를 복제하지 않고, plan.js가 diff에서 표를 직접 만든다.
+function openPlanStep() {
+  $('printPlanReason').value = printState.planReason;
+  $('printPlanNote').value = printState.planNote;
+  showStep('plan');
+}
+
+function printPlan() {
+  printState.planReason = $('printPlanReason').value.trim();
+  printState.planNote = $('printPlanNote').value;
+  var data = buildPlanData(hooks.getDiffsByCtxKey(), hooks.getCtx, dateOf, hooks.getAbsentTeacher());
+  // 서식1 뒤에 서식2(반별 안내)를 이어 붙인다. 서식2는 항상 새 쪽에서 시작한다(.pl2-page).
+  $('printPlan').innerHTML = renderPlanHtml(data, { reason: printState.planReason, note: printState.planNote }) +
+    renderClassNoticesHtml(buildClassNotices(data));
+  $('printDialog').close();
+  document.body.classList.add('printing-plan');
+  setPrintTitle('수업교체 및 보강 계획서');
   window.print();
 }
 
@@ -331,8 +393,14 @@ export function initPrint(h) {
   $('printCloseBtn').addEventListener('click', function () { $('printDialog').close(); });
   $('printBackBtn').addEventListener('click', function () { setError(''); showStep('date'); });
   $('printBoardsBtn').addEventListener('click', printBoards);
+  $('printPlanBtn').addEventListener('click', openPlanStep);
+  $('printPlanBackBtn').addEventListener('click', function () { showStep('choose'); });
+  $('printPlanGoBtn').addEventListener('click', printPlan);
   window.addEventListener('afterprint', function () {
     document.body.classList.remove('printing-boards');
+    document.body.classList.remove('printing-plan');
+    restoreTitle();
     $('printPages').innerHTML = '';
+    $('printPlan').innerHTML = '';
   });
 }

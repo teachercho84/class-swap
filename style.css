@@ -762,6 +762,22 @@ table.mini-board.has-dates .cell-btn, table.mini-board.has-dates .cell-disabled,
 .slot-removed .cell-date { text-decoration: line-through; opacity: 0.7; }
 
 .print-pages { display: none; }
+.print-plan { display: none; }
+
+.print-plan-fields { display: flex; flex-direction: column; gap: 6px; font-size: 0.9rem; font-weight: 500; }
+.print-plan-fields input[type="text"],
+.print-plan-fields textarea {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+}
+.print-plan-fields label { margin-top: 6px; }
+.print-plan-fields label:first-child { margin-top: 0; }
 
 .print-dialog {
   border: none;
@@ -866,4 +882,43 @@ table.mini-board.has-dates .cell-btn, table.mini-board.has-dates .cell-disabled,
      카드 안쪽으로 밀어 내려 7교시 행을 덮는다(스크롤을 내린 채 인쇄하면 재현). */
   .print-grid table.mini-board thead th { font-size: 8.5pt; padding: 0; position: static; }
   .print-grid table.mini-board td.period-cell { font-size: 8pt; }
+
+  /* ---- 수업교체 및 보강 계획서(서식1) — 양식(hwpx) 치수를 mm로 못박는다 ---- */
+  body.printing-plan { background: #fff; padding: 0; }
+  body.printing-plan .masthead,
+  body.printing-plan #errorBanner,
+  body.printing-plan #noticeBanner,
+  body.printing-plan .main-row,
+  body.printing-plan #previewSection,
+  body.printing-plan #assignResultSection,
+  body.printing-plan .print-dialog { display: none !important; }
+  body.printing-plan .wrap { max-width: none; }
+  body.printing-plan .print-plan { display: block; color: #000; font-family: "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif; }
+  .pl-formno { font-size: 11pt; margin: 6mm 0 0 8mm; }
+  .pl-title { font-size: 22pt; font-weight: 700; text-align: center; margin: 8mm 0 10mm; letter-spacing: 0.02em; }
+  .pl-table { width: 155mm; margin: 0 auto; border-collapse: collapse; table-layout: fixed; border: 0.4mm solid #000; font-size: 10pt; }
+  .pl-table td { border: 0.12mm solid #000; text-align: center; vertical-align: middle; padding: 0 1mm; line-height: 1.2; overflow: hidden; word-break: keep-all; }
+  .pl-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .pl-lab { font-weight: 700; font-size: 11pt; }
+  .pl-r9 { height: 9mm; }
+  .pl-r10 { height: 10mm; }
+  .pl-data { height: var(--pl-row-h, 7mm); }
+  .pl-sec td { border-top: 0.4mm solid #000; border-bottom: 0.4mm solid #000; }
+  .pl-note { height: 22.4mm; }
+  .pl-notecell { text-align: left !important; vertical-align: top !important; white-space: pre-wrap; padding: 2mm !important; }
+
+  /* ---- 서식2(학급별 안내 내용): 서식1 뒤 무조건 새 쪽, 표는 쪽을 넘어 잘리지 않는다 ---- */
+  .pl2-page { break-before: page; page-break-before: always; }
+  .pl2-head { height: 22mm; box-sizing: border-box; padding-top: 4mm; }
+  .pl2-formno { font-size: 11pt; margin-left: 8mm; height: 6mm; }
+  .pl2-heading { font-size: 12pt; font-weight: 700; text-align: center; margin-top: 4mm; }
+  .pl2-block { margin: 0 auto 5mm; width: 150mm; break-inside: avoid; page-break-inside: avoid; }
+  .pl2-table { width: 150mm; border-collapse: collapse; table-layout: fixed; border: 0.4mm solid #000; font-size: 9pt; }
+  .pl2-table td { border: 0.12mm solid #000; text-align: center; vertical-align: middle; padding: 0 1.5mm; line-height: 1.2; overflow: hidden; word-break: keep-all; }
+  .pl2-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .pl2-title td { height: 11mm; font-size: 15pt; font-weight: 700; }
+  .pl2-r8 { height: 8mm; }
+  .pl2-lab td { font-size: 12pt; font-weight: 700; }
+  .pl2-lab2 td { font-size: 10pt; font-weight: 700; }
+  .pl2-data { height: var(--pl2-row-h, 10mm); }
 }

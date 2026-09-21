@@ -128,6 +128,8 @@
     </section>
     <!-- 인쇄 전용: printBoards()가 카드를 4개씩 복제해 담는다(화면에선 숨김) -->
     <div id="printPages" class="print-pages"></div>
+    <!-- 인쇄 전용: 수업교체 및 보강 계획서(서식1). printPlan()이 채운다(화면에선 숨김) -->
+    <div id="printPlan" class="print-plan"></div>
   </div>
 </div>
 
@@ -151,11 +153,24 @@
     <p id="printDateSummary" class="print-hint"></p>
     <div class="print-choose-btns">
       <button type="button" id="printBoardsBtn" class="is-primary">최종 변경 시간표 출력</button>
-      <button type="button" id="printJournalBtn" disabled>수업 교체 일지 출력 <small>(준비 중)</small></button>
+      <button type="button" id="printPlanBtn">수업교체 및 보강 계획서 출력</button>
     </div>
     <div class="print-actions">
       <button type="button" id="printBackBtn">날짜 다시 입력</button>
       <button type="button" id="printCloseBtn">닫기</button>
+    </div>
+  </div>
+  <div id="printStepPlan" hidden>
+    <h3>수업교체 및 보강 계획서 — 추가 입력</h3>
+    <div class="print-plan-fields">
+      <label for="printPlanReason">사유</label>
+      <input type="text" id="printPlanReason" value="출장" autocomplete="off">
+      <label for="printPlanNote">결강 수업의 보강계획 <small>(선택)</small></label>
+      <textarea id="printPlanNote" rows="4"></textarea>
+    </div>
+    <div class="print-actions">
+      <button type="button" id="printPlanBackBtn">뒤로</button>
+      <button type="button" id="printPlanGoBtn" class="is-primary">인쇄</button>
     </div>
   </div>
 </dialog>

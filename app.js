@@ -243,6 +243,14 @@ function handleAddAbsence() {
   var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');
   var periods = [];
   checks.forEach(function (cb) { if (cb.checked) periods.push(parseInt(cb.value, 10)); });
+  // 폼(요일·교시)에 아무것도 입력하지 않고 시간표 칸만 선택해 둔 상태라면, 그 칸을 결강으로
+  // 등록한다. 폼에 하나라도 손댔으면 항상 폼 기준 — 입력 중에 예전에 눌러 둔 칸이 조용히
+  // 등록되는 일이 없게 한다.
+  if (!day && periods.length === 0 && lastSelectedCtx && lastSelectedCtx.teacher === STATE.currentTeacher) {
+    registerSelectedCellAsAbsence();
+    clearResults();
+    return;
+  }
   if (!day) {
     document.getElementById('absenceDayPicks').classList.add('needs-pick');
     return;
@@ -260,8 +268,8 @@ function handleAddAbsence() {
   saveAbsencesToStorage();
 }
 
-// 시간표에서 칸을 눌러 둔 상태로 '수동 찾기'·'자동 찾기'를 누르면 그 칸을 그 교사의
-// 결강으로 먼저 등록한다(태그가 남고, 이미 등록된 결근이 있으면 거기에 추가). 등록 뒤의
+// 시간표에서 눌러 둔 칸을 그 교사의 결강으로 등록한다(handleAddAbsence의 '추가'가 폼이
+// 비어 있을 때 호출). 태그가 남고, 이미 등록된 결근이 있으면 거기에 더해진다. 등록 뒤의
 // 흐름은 요일·교시를 직접 골라 "추가"한 것과 완전히 같다.
 function registerSelectedCellAsAbsence() {
   var ctx = lastSelectedCtx;
@@ -619,7 +627,6 @@ var ASSIGN_SURFACES = {
 var activeAssignSurface = 'manual';
 
 function runAutoAssign() {
-  registerSelectedCellAsAbsence(); // clearResults가 칸 선택을 풀기 전에 먼저 읽는다
   clearResults(); // 수동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
   activeAssignSurface = 'auto';
 
@@ -926,7 +933,6 @@ function renderManualAssignBoards() {
 }
 
 function renderManualAssignList() {
-  registerSelectedCellAsAbsence(); // clearResults가 칸 선택을 풀기 전에 먼저 읽는다
   clearResults(); // 자동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
   activeAssignSurface = 'manual';
   var affected = findAbsenceAffectedClasses(STATE.currentTeacher);

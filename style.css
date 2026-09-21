@@ -230,6 +230,8 @@ select#teacherSelect:focus-visible {
 }
 .absence-day-pick:hover { background: var(--line); }
 .absence-day-pick.is-active { background: var(--accent); color: var(--accent-ink); }
+/* 요일을 고르지 않고 "추가"를 눌렀을 때 — 요일 버튼 전체에 붉은 테두리를 잠시 보여준다 */
+.absence-day-picks.needs-pick .absence-day-pick { box-shadow: 0 0 0 2px var(--danger); }
 .absence-period-checks { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1; min-width: 0; }
 .absence-period-checks label { display: inline-flex; align-items: center; gap: 3px; cursor: pointer; }
 .absence-panel-controls button {

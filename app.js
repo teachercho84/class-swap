@@ -172,20 +172,22 @@ function renderAbsenceDayOptions() {
     opt.textContent = day + '요일';
     sel.appendChild(opt);
   });
+  sel.selectedIndex = -1; // 기본 선택 없음 — 요일을 직접 눌러야 추가할 수 있다
 
   // 요일 select는 실제 값 저장소로만 쓰고, 화면에는 교시 체크박스와 같은 톤의
   // 필 버튼으로 보여준다 — 하나만 활성화되는 단일 선택(라디오 방식)을 유지한다.
   var picks = document.getElementById('absenceDayPicks');
   picks.innerHTML = '';
-  STATE.dayList.forEach(function (day, i) {
+  STATE.dayList.forEach(function (day) {
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'absence-day-pick' + (i === 0 ? ' is-active' : '');
+    btn.className = 'absence-day-pick';
     btn.textContent = day + '요일';
     btn.addEventListener('click', function () {
       sel.value = day;
       picks.querySelectorAll('.absence-day-pick').forEach(function (b) { b.classList.remove('is-active'); });
       btn.classList.add('is-active');
+      picks.classList.remove('needs-pick');
     });
     picks.appendChild(btn);
   });
@@ -236,7 +238,11 @@ function handleAddAbsence() {
   var checks = document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]');
   var periods = [];
   checks.forEach(function (cb) { if (cb.checked) periods.push(parseInt(cb.value, 10)); });
-  if (!day || periods.length === 0) return;
+  if (!day) {
+    document.getElementById('absenceDayPicks').classList.add('needs-pick');
+    return;
+  }
+  if (periods.length === 0) return;
 
   if (!STATE.absencesByTeacher[STATE.currentTeacher]) STATE.absencesByTeacher[STATE.currentTeacher] = [];
   var list = STATE.absencesByTeacher[STATE.currentTeacher];
@@ -253,13 +259,13 @@ function handleAddAbsence() {
 // 데이터(STATE.absencesByTeacher)는 건드리지 않는다. 교사 전환 시 이전 교사가
 // 선택해두었던 폼 상태가 그대로 남아 보이는 것을 막기 위해 쓰인다.
 function resetAbsenceForm() {
-  document.getElementById('absenceDaySelect').selectedIndex = 0;
+  document.getElementById('absenceDaySelect').selectedIndex = -1;
   document.getElementById('absencePeriodAll').checked = false;
   document.querySelectorAll('#absencePeriodChecks input[type="checkbox"][value]').forEach(function (cb) {
     cb.checked = false;
   });
-  var picks = document.querySelectorAll('#absenceDayPicks .absence-day-pick');
-  picks.forEach(function (b, i) { b.classList.toggle('is-active', i === 0); });
+  document.getElementById('absenceDayPicks').classList.remove('needs-pick');
+  document.querySelectorAll('#absenceDayPicks .absence-day-pick').forEach(function (b) { b.classList.remove('is-active'); });
 }
 
 // 초기화 버튼: 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과, 결근 등록 폼의

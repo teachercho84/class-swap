@@ -84,6 +84,11 @@ function clearResults() {
   manualWorkingState = { order: [], byKey: {}, teacherMap: null, classMap: null, conflicts: [] };
   resetPrintState();
   updateAssignResultVisibility();
+  // 후보 패널이 초기 안내로 돌아가므로 칸 선택도 함께 푼다 — 남겨두면 '초기화'나 결근 태그
+  // 삭제 뒤 다음 찾기에서 방금 지운 칸이 다시 결강으로 등록된다(registerSelectedCellAsAbsence).
+  if (lastSelectedCell) lastSelectedCell.classList.remove('cell-selected');
+  lastSelectedCell = null;
+  lastSelectedCtx = null;
 }
 
 // #assignResultSection은 CSS만으로 "비어있으면 숨기기"를 하면(:has()) 자동 찾기처럼
@@ -252,6 +257,20 @@ function handleAddAbsence() {
   });
   renderAbsenceTags();
   clearResults();
+  saveAbsencesToStorage();
+}
+
+// 시간표에서 칸을 눌러 둔 상태로 '수동 찾기'·'자동 찾기'를 누르면 그 칸을 그 교사의
+// 결강으로 먼저 등록한다(태그가 남고, 이미 등록된 결근이 있으면 거기에 추가). 등록 뒤의
+// 흐름은 요일·교시를 직접 골라 "추가"한 것과 완전히 같다.
+function registerSelectedCellAsAbsence() {
+  var ctx = lastSelectedCtx;
+  if (!ctx || ctx.teacher !== STATE.currentTeacher) return;
+  var list = STATE.absencesByTeacher[STATE.currentTeacher] || (STATE.absencesByTeacher[STATE.currentTeacher] = []);
+  var exists = list.some(function (a) { return a.day === ctx.day && a.period === ctx.period; });
+  if (exists) return;
+  list.push({ day: ctx.day, period: ctx.period });
+  renderAbsenceTags();
   saveAbsencesToStorage();
 }
 
@@ -600,6 +619,7 @@ var ASSIGN_SURFACES = {
 var activeAssignSurface = 'manual';
 
 function runAutoAssign() {
+  registerSelectedCellAsAbsence(); // clearResults가 칸 선택을 풀기 전에 먼저 읽는다
   clearResults(); // 수동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
   activeAssignSurface = 'auto';
 
@@ -906,6 +926,7 @@ function renderManualAssignBoards() {
 }
 
 function renderManualAssignList() {
+  registerSelectedCellAsAbsence(); // clearResults가 칸 선택을 풀기 전에 먼저 읽는다
   clearResults(); // 자동 모드로 쌓인 결과가 같이 남아있지 않도록 먼저 싹 지운다
   activeAssignSurface = 'manual';
   var affected = findAbsenceAffectedClasses(STATE.currentTeacher);

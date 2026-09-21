@@ -22,6 +22,12 @@ function showError(msg) {
   el.style.display = 'block';
 }
 
+function showNotice(msg) {
+  var el = document.getElementById('noticeBanner');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
 function renderTitle() {
   var s = STATE.settings;
   var title = (s.year || '') + '학년도 ' + (s.semester || '') + ' ' + (s.schoolName || '') + ' 수업 시간표 교체';
@@ -113,6 +119,48 @@ function loadAbsencesFromStorage() {
 
 function saveAbsencesToStorage() {
   localStorage.setItem(ABSENCE_STORAGE_KEY, JSON.stringify(STATE.absencesByTeacher));
+}
+
+// 결근 기록은 "월요일 3교시" 같은 요일·교시만 저장하고 어느 시간표 기준인지는 남기지
+// 않는다. 그래서 시간표 파일(data.xlsx)이 바뀌면(학기 전환·시간표 수정) 예전 기록이 새
+// 시간표에 그대로 적용돼 버린다. 파일 내용의 해시를 결근 기록과 함께 저장해 두었다가
+// 다음에 열 때 달라졌으면 결근 기록을 비운다. 저장된 해시가 없는데 결근 기록만 있는
+// 경우(이 기능이 생기기 전에 저장된 기록)도 파일이 바뀐 것으로 본다.
+var DATA_HASH_STORAGE_KEY = 'classSwapDataHash';
+
+function computeDataHash(buf) {
+  return crypto.subtle.digest('SHA-256', buf).then(function (digest) {
+    return Array.prototype.map.call(new Uint8Array(digest), function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+  });
+}
+
+function hasAnyAbsence() {
+  return Object.keys(STATE.absencesByTeacher).some(function (name) {
+    var list = STATE.absencesByTeacher[name];
+    return Array.isArray(list) && list.length > 0;
+  });
+}
+
+// 해시 계산이나 storage가 막혀 있으면(오래된 브라우저, 비보안 주소 등) 자동 초기화만
+// 건너뛰고 앱은 그대로 동작한다.
+function resetAbsencesIfDataChanged(buf) {
+  return Promise.resolve().then(function () {
+    return computeDataHash(buf);
+  }).then(function (hash) {
+    var stored = localStorage.getItem(DATA_HASH_STORAGE_KEY);
+    if (stored === hash) return;
+    var hadAbsences = hasAnyAbsence();
+    if (hadAbsences) {
+      STATE.absencesByTeacher = {};
+      saveAbsencesToStorage();
+      showNotice('시간표 파일이 바뀌어 저장돼 있던 결근·출장 기록을 초기화했습니다.');
+    }
+    localStorage.setItem(DATA_HASH_STORAGE_KEY, hash);
+  }).catch(function (e) {
+    console.warn('[출장·결근] 시간표 파일 변경 여부를 확인하지 못했습니다:', e);
+  });
 }
 
 function renderAbsenceDayOptions() {
@@ -214,13 +262,13 @@ function resetAbsenceForm() {
   picks.forEach(function (b, i) { b.classList.toggle('is-active', i === 0); });
 }
 
-// 초기화 버튼: 현재 교사에 대해 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과,
-// 결근 등록 폼의 요일/교시 선택, 추가해둔 결근 태그, 그리고 storage에 저장된 값까지
-// 전부 지운다.
+// 초기화 버튼: 패널 전체를 처음 상태로 되돌린다 — 대체 배정 결과, 결근 등록 폼의
+// 요일/교시 선택, 추가해둔 결근 태그, 그리고 storage에 저장된 모든 교사의 결근
+// 기록까지 전부 지운다(각자 자기 컴퓨터에서 쓰는 전제라 교사 한 명 단위로 나누지 않는다).
 function resetAssignPanel() {
   clearResults();
   resetAbsenceForm();
-  STATE.absencesByTeacher[STATE.currentTeacher] = [];
+  STATE.absencesByTeacher = {};
   renderAbsenceTags();
   saveAbsencesToStorage();
 }
@@ -1104,6 +1152,9 @@ function init() {
     .then(function (resp) {
       if (!resp.ok) throw new Error('data.xlsx 파일을 불러올 수 없습니다 (HTTP ' + resp.status + ').');
       return resp.arrayBuffer();
+    })
+    .then(function (buf) {
+      return resetAbsencesIfDataChanged(buf).then(function () { return buf; });
     })
     .then(function (buf) {
       var wb = XLSX.read(buf, { type: 'array' });
